@@ -17,7 +17,7 @@
       "credits": "Models: Kenney Furniture Kit, Food Kit (CC0)",
       "size": 98208,
       "sha256": "075df81768c19200c606649ff8db85b48c9abbf14d1fbd4fc0a58a1c787bf012",
-      "url": "https://github.com/Charonyuu/whatsmyagentdoing/releases/download/scenes/cafe-v1.tar.gz",
+      "file": "cafe-v1.tar.gz",
       "icon": "☕"
     },
     {
@@ -37,7 +37,7 @@
       "credits": "Models: Kenney Castle Kit, Food Kit, Pirate Kit, Furniture Kit (CC0)",
       "size": 165298,
       "sha256": "cfdc4f138164597ca7ff70ef97284a82b0ceda50731dade94e39602696c5d8b6",
-      "url": "https://github.com/Charonyuu/whatsmyagentdoing/releases/download/scenes/castle-v1.tar.gz",
+      "file": "castle-v1.tar.gz",
       "icon": "🏰"
     },
     {
@@ -57,7 +57,7 @@
       "credits": "Models: Kenney Pirate Kit (CC0)",
       "size": 140841,
       "sha256": "5f8ce658a93aa73b02f63ba2c77f2cd8e65b63a66f47a0880e50ff4e564f4836",
-      "url": "https://github.com/Charonyuu/whatsmyagentdoing/releases/download/scenes/pirate-v3.tar.gz",
+      "file": "pirate-v3.tar.gz",
       "icon": "🏴‍☠️"
     },
     {
@@ -77,7 +77,7 @@
       "credits": "Models: Kenney Space Station Kit, Space Kit (CC0)",
       "size": 140442,
       "sha256": "15b11fcbd89d67f8e69b9b8fa7ef97a2b58be83ec18c12d0c333f66cfc2fbb31",
-      "url": "https://github.com/Charonyuu/whatsmyagentdoing/releases/download/scenes/station-v1.tar.gz",
+      "file": "station-v1.tar.gz",
       "icon": "🚀"
     }
   ]

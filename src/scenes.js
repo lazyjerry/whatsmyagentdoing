@@ -17,11 +17,13 @@ const USER_DIR = path.join(os.homedir(), '.whatsmyagentdoing', 'scenes');
 const BUNDLED_DIR = path.join(__dirname, '..', 'scenes');
 const SCENE_DIRS = [USER_DIR, BUNDLED_DIR];
 const CATALOG = path.join(__dirname, '..', 'scenes.json');
+const { sceneReleaseUrl } = require('./config');
 const ALLOWED_EXT = new Set(['.json', '.glb', '.png', '.txt']);
 const MAX_BYTES = 30 * 1024 * 1024;
 
 function catalog() {
-  try { return JSON.parse(fs.readFileSync(CATALOG, 'utf8')).scenes || []; } catch { return []; }
+  // scenes.json stores only the pack's file name; the release it lives in comes from config.
+  try { return (JSON.parse(fs.readFileSync(CATALOG, 'utf8')).scenes || []).map((s) => ({ ...s, url: sceneReleaseUrl(s.file) })); } catch { return []; }
 }
 
 function installed() {

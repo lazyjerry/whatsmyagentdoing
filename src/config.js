@@ -4,8 +4,8 @@
 // read package.json from REPO's BRANCH; scene packs are published to REPO's
 // "scenes" GitHub release. Change REPO here when the project moves or is forked.
 //
-// scenes.json keeps full URLs per pack (pinned by sha256) and is not derived
-// from this file, so already-published packs keep working across forks.
+// scenes.json stores only each pack's file name (pinned by sha256); scenes.js
+// builds the download URL from sceneReleaseUrl() at read time.
 
 const REPO = 'lazyjerry/whatsmyagentdoing';
 const BRANCH = 'main';

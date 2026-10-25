@@ -10,7 +10,6 @@ const path = require('path');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
-const REPO = 'Charonyuu/whatsmyagentdoing';
 const src = path.resolve(process.argv[2] || '');
 const manifest = JSON.parse(fs.readFileSync(path.join(src, 'manifest.json'), 'utf8'));
 const id = manifest.id;
@@ -61,7 +60,7 @@ try { cat = JSON.parse(fs.readFileSync(catalogPath, 'utf8')); } catch {}
 const entry = {
   id, version: manifest.version, name: manifest.name, credits: manifest.credits,
   icon: manifest.icon || (cat.scenes.find((s) => s.id === id) || {}).icon,
-  size: gz.length, sha256, url: `https://github.com/${REPO}/releases/download/scenes/${file}`,
+  size: gz.length, sha256, file,
 };
 cat.scenes = [...cat.scenes.filter((s) => s.id !== id), entry].sort((a, b) => a.id.localeCompare(b.id));
 fs.writeFileSync(catalogPath, JSON.stringify(cat, null, 2) + '\n');
