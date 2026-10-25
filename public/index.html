@@ -772,8 +772,14 @@ function renderVersion() {
     setTimeout(renderVersion, 4000);
   };
 }
+let verTimer = null;
 function loadVersion() {
-  fetch('/api/version', { cache: 'no-store' }).then((r) => r.json()).then((v) => { verInfo = v; renderVersion(); }).catch(() => {});
+  fetch('/api/version', { cache: 'no-store' }).then((r) => r.json()).then((v) => {
+    verInfo = v; renderVersion();
+    // AUTO_UPDATE_CHECK in src/config.js: the server already checked on this
+    // request; keep asking every 30 minutes
+    if (v.auto && !verTimer) verTimer = setInterval(loadVersion, 30 * 60 * 1000);
+  }).catch(() => {});
 }
 loadVersion();
 

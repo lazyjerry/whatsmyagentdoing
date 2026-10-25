@@ -18,6 +18,7 @@ const TYPES = { '.js': 'text/javascript; charset=utf-8', '.glb': 'model/gltf-bin
 const MOUNTS = { '/assets/': path.join(__dirname, '..', 'assets') };
 const scenes = require('./scenes');
 const updater = require('./update');
+const { AUTO_UPDATE_CHECK } = require('./config');
 
 function serveFile(res, root, rel) {
   const file = path.normalize(path.join(root, rel));
@@ -162,9 +163,11 @@ function createServer(watcher, opts, { onShutdown, onRestart } = {}) {
       for (const c of clients) c.end();
       setTimeout(onShutdown, 50);
     } else if (url.pathname === '/api/version') {
-      // Only ?check=1 (the page's "Check for updates" button) goes to GitHub;
-      // a plain GET answers from what is already known.
-      const checked = url.searchParams.get('check') === '1' ? updater.checkLatest() : Promise.resolve();
+      // ?check=1 (the page's "Check for updates" button) always goes to GitHub.
+      // A plain GET only does so with AUTO_UPDATE_CHECK on (at most every 30
+      // minutes); otherwise it answers from what is already known.
+      const force = url.searchParams.get('check') === '1';
+      const checked = force || AUTO_UPDATE_CHECK ? updater.checkLatest(force) : Promise.resolve();
       checked.finally(() => {
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
         res.end(JSON.stringify(updater.info()));

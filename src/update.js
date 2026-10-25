@@ -1,11 +1,12 @@
 'use strict';
 
-// Version check and self-update. The check only runs when asked for (the
-// "Check for updates" button on the page): it reads one public file (the
-// package.json on GitHub's main branch) and sends nothing else; set
-// WMAD_NO_UPDATE_CHECK=1 to turn it off. Updating is a `git pull --ff-only`
-// in the install folder, so it only works for git clones (which is how the
-// skill is installed).
+// Version check and self-update. The check reads one public file (the
+// package.json on GitHub's main branch) and sends nothing else. By default it
+// only runs when the "Check for updates" button on the page is pressed;
+// AUTO_UPDATE_CHECK in config.js makes it automatic (page load, every 30
+// minutes, CLI start-up). Set WMAD_NO_UPDATE_CHECK=1 to turn it off.
+// Updating is a `git pull --ff-only` in the install folder, so it only works
+// for git clones (which is how the skill is installed).
 
 const fs = require('fs');
 const path = require('path');
@@ -13,7 +14,8 @@ const https = require('https');
 const { execFile } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const { LATEST_URL } = require('./config');
+const { LATEST_URL, AUTO_UPDATE_CHECK } = require('./config');
+const CHECK_EVERY = 30 * 60 * 1000;
 
 function localVersion() {
   try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version; } catch { return '0.0.0'; }
@@ -25,7 +27,7 @@ function newer(a, b) {
   return false;
 }
 
-const state = { latest: null, checking: null };
+const state = { latest: null, checkedAt: 0, checking: null };
 
 function fetchLatest() {
   return new Promise((resolve) => {
@@ -40,12 +42,13 @@ function fetchLatest() {
   });
 }
 
-async function checkLatest() {
+async function checkLatest(force = false) {
   if (process.env.WMAD_NO_UPDATE_CHECK) return null;
   if (process.env.WMAD_LATEST_VERSION) { state.latest = process.env.WMAD_LATEST_VERSION; return state.latest; } // for testing
+  if (!force && state.latest && Date.now() - state.checkedAt < CHECK_EVERY) return state.latest;
   if (!state.checking) {
     state.checking = fetchLatest().then((v) => {
-      if (v) state.latest = v;
+      if (v) { state.latest = v; state.checkedAt = Date.now(); }
       state.checking = null;
       return state.latest;
     });
@@ -64,6 +67,7 @@ function info() {
     latest: state.latest,
     updateAvailable: !!(state.latest && newer(state.latest, version)),
     canUpdate: canUpdate(),
+    auto: AUTO_UPDATE_CHECK,
   };
 }
 

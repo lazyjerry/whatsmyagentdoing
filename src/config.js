@@ -1,0 +1,26 @@
+'use strict';
+
+// Every external host this project reaches out to, in one place. Update checks
+// read package.json from REPO's BRANCH; scene packs are published to REPO's
+// "scenes" GitHub release. Change REPO here when the project moves or is forked.
+//
+// scenes.json keeps full URLs per pack (pinned by sha256) and is not derived
+// from this file, so already-published packs keep working across forks.
+
+const REPO = 'lazyjerry/whatsmyagentdoing';
+const BRANCH = 'main';
+
+// Update checks. false: nothing reaches GitHub until the "Check for updates"
+// button on the page is pressed. true: the page checks on load and every 30
+// minutes, and the CLI checks on start-up and prints an "Update available"
+// line. WMAD_NO_UPDATE_CHECK=1 turns checks off either way.
+const AUTO_UPDATE_CHECK = false;
+
+const REPO_URL = `https://github.com/${REPO}`;
+const LATEST_URL = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/package.json`;
+
+function sceneReleaseUrl(file) {
+  return `${REPO_URL}/releases/download/scenes/${file}`;
+}
+
+module.exports = { REPO, BRANCH, REPO_URL, LATEST_URL, AUTO_UPDATE_CHECK, sceneReleaseUrl };
