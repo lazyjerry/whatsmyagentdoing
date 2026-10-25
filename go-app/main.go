@@ -43,7 +43,8 @@ Options:
 Reads (never writes):
 %s
 Override with CLAUDE_CONFIG_DIR / CODEX_HOME / GEMINI_CLI_HOME.
-Static files come from the clone that holds this go-app/ (override with WMAD_ROOT).`, version, describeDirs())
+The page and its assets are built into this binary; --update needs it to sit
+in its go-app/ source folder inside a git clone (or WMAD_SRC pointing there).`, version, describeDirs())
 }
 
 func parseArgs(argv []string, version string) Options {
@@ -170,15 +171,10 @@ func isAddrInUse(err error) bool {
 }
 
 func main() {
-	root, err := findRoot()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	updater := NewUpdater(root)
+	updater := NewUpdater()
 	version := updater.LocalVersion()
 	o := parseArgs(os.Args[1:], version)
-	scenes := Scenes{root: root}
+	scenes := Scenes{}
 
 	if o.Update {
 		before := updater.LocalVersion()
@@ -302,7 +298,7 @@ func main() {
 
 	var httpServer *http.Server
 	var app *Server
-	app = NewServer(root, src, o, updater,
+	app = NewServer(src, o, updater,
 		func() { // onShutdown
 			src.Stop()
 			app.Close()
@@ -334,6 +330,7 @@ func main() {
 		})
 
 	var ln net.Listener
+	var err error
 	port := o.Port
 	for tries := 10; ; tries-- {
 		ln, err = net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))

@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What's my agent doing</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👀</text></svg>">
+<style>
+  :root {
+    --bg: #f6f6f3;
+    --panel: #ffffff;
+    --ink: #1c1c1a;
+    --muted: #6d6d68;
+    --faint: #a3a39d;
+    --line: #e4e3dd;
+    --thinking: #7c5cdb;
+    --tool: #2f7dd1;
+    --typing: #1f9d6b;
+    --waiting: #d98a0b;
+    --done: #5b8a4a;
+    --error: #d1453b;
+    --idle: #a3a39d;
+    --claude: #c96442;
+    --codex: #10a37f;
+    --gemini: #4f7cf0;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141413;
+      --panel: #1e1e1c;
+      --ink: #ecebe6;
+      --muted: #a09f99;
+      --faint: #6b6a65;
+      --line: #2e2d2a;
+      --thinking: #a48bf0;
+      --tool: #5ea4ee;
+      --typing: #3fc48f;
+      --waiting: #f0a93a;
+      --done: #86b872;
+      --error: #f0675d;
+      --idle: #6b6a65;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font: 14px/1.45 ui-sans-serif, -apple-system, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+    padding: 24px 16px 64px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 24px; margin-bottom: 16px; }
+  h1 { font-size: 19px; margin: 0; letter-spacing: -.01em; }
+  h1 span { color: var(--ink); font-weight: 600; }
+  .summary { display: flex; gap: 18px; flex-wrap: wrap; margin-left: auto; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 0; font-size: 12px; color: var(--muted); }
+  .chip b { color: var(--ink); font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+  .controls { position: relative; width: 100%; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding-top: 14px; border-top: 1px solid var(--line); }
+  .seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
+  .seg button { border: 0; background: none; color: var(--muted); padding: 5px 12px; border-radius: 5px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .seg button:hover:not(.on) { color: var(--ink); background: var(--bg); }
+  .seg button.on { background: var(--ink); color: var(--bg); }
+  #qualSeg { border-color: transparent; background: transparent; }
+  #qualSeg button.on { background: var(--line); color: var(--ink); }
+  .seg button small { opacity: .65; font-size: 11px; }
+  label.tog { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--muted); cursor: pointer; user-select: none; }
+  .btn { border: 1px solid var(--line); background: var(--panel); color: var(--muted); padding: 5px 11px; border-radius: 8px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .btn:hover { color: var(--ink); border-color: var(--faint); }
+  button:focus-visible, select:focus-visible, summary:focus-visible, input:focus-visible { outline: 2px solid var(--tool); outline-offset: 3px; }
+  .toolbar-space { flex: 1; }
+  .controls > .btn, .settings > summary { min-height: 36px; display: inline-flex; align-items: center; white-space: nowrap; }
+  .settings > summary { list-style: none; gap: 7px; color: var(--ink); }
+  .settings > summary::-webkit-details-marker { display: none; }
+  .settings > summary::after { content: "⌄"; color: var(--muted); }
+  .settings[open] > summary { background: var(--line); }
+  .settings[open] > summary::after { content: "⌃"; }
+  .filter-active { font-size: 11px; color: var(--tool); }
+  .settings-panel { position: absolute; z-index: 20; right: 0; top: calc(100% + 10px); width: min(360px, calc(100vw - 32px)); max-height: calc(100dvh - 180px); overflow-y: auto; overscroll-behavior: contain; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 12px 40px #0003; }
+  .setting-group + .setting-group { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .setting-label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 9px; }
+  #sceneGroup[hidden] + .setting-group { margin-top: 0; padding-top: 0; border-top: 0; }
+  #sceneSeg { display: grid; grid-template-columns: 1fr 1fr; border: 0; padding: 0; gap: 6px; }
+  #sceneSeg button { text-align: left; padding: 8px 10px; background: var(--bg); }
+  #sceneSeg button.on { background: var(--line); color: var(--ink); box-shadow: inset 0 0 0 1px var(--faint); }
+  #agentSeg { display: flex; }
+  #agentSeg button { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 8px 6px; }
+  .setting-toggles { display: grid; gap: 12px; margin-top: 14px; }
+  .setting-toggles .tog { color: var(--ink); gap: 8px; }
+  .tog input { accent-color: var(--tool); margin: 0; width: 15px; height: 15px; }
+  .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .setting-row .setting-label { margin: 0; }
+  #langSel { max-width: 70%; }
+  #notify { width: 100%; margin-top: 14px; padding: 8px; }
+  #notify:disabled { cursor: default; opacity: .65; }
+  @media (max-width: 640px) {
+    header { gap: 14px; }
+    .summary { margin-left: 0; width: 100%; gap: 18px; }
+    .controls { gap: 6px; padding-top: 12px; }
+    .seg button { padding-inline: 9px; }
+    .controls > .btn, .settings > summary { padding-inline: 9px; }
+  }
+  @media (max-width: 360px) {
+    body { padding-inline: 10px; }
+    .controls { gap: 4px; }
+    .seg button { padding-inline: 7px; }
+  }
+
+  section { margin-top: 26px; }
+  section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 600; display: flex; gap: 8px; align-items: center; }
+  section h2 .n { color: var(--faint); font-weight: 500; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+  @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } .controls { margin-left: 0; } }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 14px 12px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 8px; min-width: 0; position: relative; transition: border-color .3s; }
+  .card.sub { padding: 10px 12px; gap: 6px; }
+  .card.flash { animation: flash 1.6s ease-out; }
+  @keyframes flash { 0% { box-shadow: 0 0 0 3px var(--done); } 100% { box-shadow: var(--shadow); } }
+  .card[data-s="waiting"], .card[data-s="error"] { border-color: color-mix(in srgb, var(--s) 55%, var(--line)); }
+  .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .agent { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; letter-spacing: .02em; color: var(--muted); flex: none; }
+  .agent-logo { width: 20px; height: 20px; object-fit: contain; padding: 1px; flex: none; }
+  .project { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .time { margin-left: auto; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; }
+  .title { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .status { display: flex; align-items: center; gap: 8px; color: var(--s); font-weight: 600; font-size: 13px; min-width: 0; }
+  .status .lbl { white-space: nowrap; flex: none; }
+  .status .act { flex: 1 1 auto; color: var(--ink); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .q, .r { font-size: 12.5px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+  .q::before { content: "› "; color: var(--faint); }
+  .r { color: var(--ink); opacity: .85; }
+  .r::before { content: "← "; color: var(--faint); }
+  .err { font-size: 12.5px; color: var(--error); }
+  .foot { display: flex; gap: 8px; align-items: center; color: var(--faint); font-size: 11.5px; min-width: 0; }
+  .foot .model { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .copy { margin-left: auto; border: 0; background: none; color: var(--faint); font: inherit; font-size: 11.5px; cursor: pointer; padding: 0; flex: none; }
+  .copy:hover { color: var(--ink); }
+
+  [data-s="thinking"] { --s: var(--thinking); }
+  [data-s="tool"] { --s: var(--tool); }
+  [data-s="typing"] { --s: var(--typing); }
+  [data-s="waiting"] { --s: var(--waiting); }
+  [data-s="done"] { --s: var(--done); }
+  [data-s="interrupted"] { --s: var(--idle); }
+  [data-s="error"] { --s: var(--error); }
+  [data-s="idle"] { --s: var(--idle); }
+
+  .ind { width: 18px; height: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 2px; flex: none; }
+  .ind i { width: 4px; height: 4px; border-radius: 50%; background: var(--s); display: none; }
+  [data-s="thinking"] .ind i { display: block; }
+  [data-s="thinking"] .ind i { animation: bob 1.2s infinite ease-in-out; }
+  [data-s="thinking"] .ind i:nth-child(2) { animation-delay: .15s; }
+  [data-s="thinking"] .ind i:nth-child(3) { animation-delay: .3s; }
+  @keyframes bob { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+  [data-s="tool"] .ind::before { content: ""; width: 11px; height: 11px; border: 2px solid var(--s); border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  [data-s="typing"] .ind::before { content: ""; width: 2px; height: 13px; background: var(--s); animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  [data-s="waiting"] .ind::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--s); animation: pulse 1.4s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--s) 60%, transparent); } 100% { box-shadow: 0 0 0 8px transparent; } }
+  [data-s="done"] .ind::before { content: "✓"; color: var(--s); font-weight: 700; }
+  [data-s="error"] .ind::before { content: "!"; color: var(--s); font-weight: 800; }
+  [data-s="interrupted"] .ind::before { content: "■"; color: var(--s); font-size: 9px; }
+  [data-s="idle"] .ind::before { content: "–"; color: var(--s); }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+
+  .office { position: relative; height: min(74vh, 820px); min-height: 380px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--panel); }
+  .office-canvas { display: block; }
+  .office canvas { transition: opacity .35s; }
+  .office.loading canvas { opacity: 0; }
+  .office-loader { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--muted); font-size: 13px; z-index: 2; }
+  .office.loading .office-loader { display: flex; }
+  .office-loader .spin { width: 26px; height: 26px; border: 3px solid var(--line); border-top-color: var(--tool); border-radius: 50%; animation: spin .8s linear infinite; }
+  .office-gl, .office-overlay { position: absolute; inset: 0; }
+  .office-overlay { touch-action: none; }
+  .tip { position: fixed; z-index: 10; width: 320px; max-width: calc(100vw - 24px); pointer-events: none; display: none; }
+  .tip.pinned { pointer-events: auto; }
+  .tip .card { box-shadow: 0 8px 30px rgba(0,0,0,.18); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; color: var(--muted); font-size: 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+
+  .pip-preview { margin-bottom: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+  .pip-preview p { margin: 0 0 10px; color: var(--muted); }
+  .pip-preview video { display: block; width: min(100%, 520px); margin-bottom: 10px; background: var(--panel); }
+  .pip-error { color: var(--error); margin: 0 0 12px; }
+  .newver { border: 1px solid var(--tool); background: color-mix(in srgb, var(--tool) 18%, var(--panel)); color: var(--ink); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 12.5px; cursor: pointer; animation: glowv 2.4s ease-in-out infinite; }
+  .newver:disabled { opacity: .7; cursor: default; animation: none; }
+  @keyframes glowv { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--tool) 25%, transparent); } }
+  .ver { position: fixed; right: 14px; bottom: 12px; display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--faint); z-index: 5; }
+  .ver button { border: 1px solid var(--tool); background: color-mix(in srgb, var(--tool) 14%, var(--panel)); color: var(--ink); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 12px; cursor: pointer; }
+  .ver button:disabled { opacity: .6; cursor: default; }
+  .ver code { background: var(--panel); border: 1px solid var(--line); padding: 2px 6px; border-radius: 6px; }
+  .empty { text-align: center; color: var(--muted); padding: 60px 16px; border: 1px dashed var(--line); border-radius: 12px; }
+  .empty code { background: var(--panel); padding: 2px 6px; border-radius: 4px; }
+  .conn { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); background: var(--error); color: #fff; padding: 6px 14px; border-radius: 999px; font-size: 12.5px; display: none; }
+  .conn.on { display: block; }
+
+  /* The PiP iframe owns its animation clock, layout, and pointer events. */
+  body.pip { padding: 8px; }
+  body.pip .wrap { height: calc(100dvh - 16px); display: flex; flex-direction: column; }
+  body.pip header { gap: 6px; margin-bottom: 8px; flex: none; }
+  body.pip h1, body.pip .newver, body.pip #legend, body.pip .ver,
+  body.pip .controls > :not(#viewSeg):not(#qualSeg) { display: none !important; }
+  body.pip .controls { width: auto; padding: 0; border: 0; }
+  body.pip .chip { padding: 2px 6px; font-size: 11px; }
+  body.pip .summary { gap: 4px; width: auto; margin-left: 0; }
+  body.pip #officeWrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  body.pip .office { flex: 1; height: auto; min-height: 120px; }
+  body.pip #main { overflow: auto; min-height: 0; }
+  body.pip #main:empty { display: none; }
+  body.pip section { margin-top: 12px; }
+  body.pip section:first-child { margin-top: 0; }
+  body.pip .grid { grid-template-columns: 1fr; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>👀 <span data-t="title"></span></h1>
+    <div class="summary" id="summary"></div>
+    <button class="newver" id="newVer" hidden></button>
+    <div class="controls">
+      <div class="seg" id="viewSeg">
+        <button data-v="office" data-t="office"></button>
+        <button data-v="list" data-t="list"></button>
+      </div>
+      <div class="seg" id="qualSeg">
+        <button data-v="mid" data-t="qMid"></button>
+        <button data-v="high" data-t="qHigh"></button>
+      </div>
+      <span class="toolbar-space" aria-hidden="true"></span>
+      <button class="btn" id="pipBtn" hidden></button>
+      <details class="settings" id="settingsMenu">
+        <summary class="btn" aria-controls="settingsPanel"><span data-t="settings"></span><span class="filter-active" id="activeFilter" hidden></span></summary>
+        <div class="settings-panel" id="settingsPanel">
+          <div class="setting-group" id="sceneGroup">
+            <span class="setting-label" id="sceneLabel" data-t="scene"></span>
+            <div class="seg" id="sceneSeg" role="group" aria-labelledby="sceneLabel"></div>
+          </div>
+          <div class="setting-group">
+            <span class="setting-label" id="filterLabel" data-t="agents"></span>
+            <div class="seg" id="agentSeg" role="group" aria-labelledby="filterLabel">
+              <button data-v="all" class="on" data-t="all"></button>
+              <button data-v="claude"><img class="agent-logo" src="/assets/agents/claude.png" alt="">Claude</button>
+              <button data-v="codex"><img class="agent-logo" src="/assets/agents/codex.png" alt="">Codex</button>
+              <button data-v="gemini"><img class="agent-logo" src="/assets/agents/gemini.png" alt="">Gemini</button>
+            </div>
+            <div class="setting-toggles">
+              <label class="tog"><input type="checkbox" id="showSub"> <span data-t="subagents"></span></label>
+              <label class="tog" id="idleToggle"><input type="checkbox" id="showIdle"> <span data-t="showIdle"></span></label>
+              <label class="tog" id="agentBadgeToggle"><input type="checkbox" id="showAgent"> <span data-t="showAgent"></span></label>
+            </div>
+          </div>
+          <div class="setting-group">
+            <div class="setting-row">
+              <label class="setting-label" for="langSel" data-t="language"></label>
+              <select class="btn" id="langSel"></select>
+            </div>
+            <button class="btn" id="notify" data-t="notify"></button>
+          </div>
+        </div>
+      </details>
+    </div>
+  </header>
+  <p class="pip-error" id="pipError" role="alert" hidden></p>
+  <div class="pip-preview" id="pipPreview" hidden>
+    <p data-t="pipVideoHint"></p>
+    <video id="pipVideo" controls autoplay muted playsinline aria-label="Office video preview"></video>
+    <button class="btn" id="videoPipBtn" data-t="pip" hidden></button>
+    <button class="btn" id="closePreview" data-t="pipStop"></button>
+  </div>
+  <div id="officeWrap">
+    <div class="office loading" id="office"><div class="office-loader"><div class="spin"></div><span id="loaderText"></span></div></div>
+    <div class="legend" id="legend"></div>
+    <div class="legend" id="agentLegend"></div>
+  </div>
+  <main id="main"></main>
+</div>
+<div class="conn" id="conn" data-t="disconnected"></div>
+<div class="tip" id="tip"></div>
+<div class="ver" id="ver"></div>
+<script src="/i18n.js"></script>
+<script src="/office.js"></script>
+<script src="/popout.js"></script>
+
+<script>
+// Language: your pick in the 🌐 menu, else the language of your prompts
+// (the server guesses it), else the browser's, else English.
+let L = I18N.en;
+let langCode = 'en';
+let rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto', style: 'short' });
+function chooseLang(serverGuess) {
+  const pick = store.get('lang', 'auto');
+  if (pick !== 'auto' && I18N[pick]) return pick;
+  if (serverGuess && I18N[serverGuess]) return serverGuess;
+  return i18nFromBrowser(navigator.languages || [navigator.language]) || 'en';
+}
+function applyLang(code) {
+  if (code === langCode && L === I18N[code] && document.documentElement.dataset.localized) return;
+  document.documentElement.dataset.localized = 'true';
+  langCode = code;
+  L = I18N[code];
+  document.documentElement.lang = L.html;
+  rtf = new Intl.RelativeTimeFormat(L.html, { numeric: 'auto', style: 'short' });
+  document.querySelectorAll('[data-t]').forEach((el) => (el.textContent = L[el.dataset.t]));
+  const legend = document.getElementById('legend');
+  if (legend) legend.innerHTML = ['thinking', 'tool', 'typing', 'waiting', 'done', 'error']
+    .map((k) => `<span data-s="${k}"><span class="dot" style="color:var(--s)"></span>${L[k]}</span>`).join('');
+  const sel = document.getElementById('langSel');
+  if (sel) sel.options[0].textContent = `🌐 ${L.auto}`;
+  if (typeof office !== 'undefined' && office) office.offDutyLabel = L.wentHome;
+  if (typeof syncControls === 'function') syncControls();
+  if (typeof renderSceneSel === 'function') renderSceneSel();
+  if (typeof renderVersion === 'function') renderVersion();
+}
+
+const store = (() => {
+  const fallback = new Map();
+  const get = (k, d) => { try { const v = localStorage.getItem('wmad.' + k); return v == null ? d : JSON.parse(v); } catch { return fallback.has(k) ? fallback.get(k) : d; } };
+  const set = (k, v) => { fallback.set(k, v); try { localStorage.setItem('wmad.' + k, JSON.stringify(v)); } catch {} };
+  return { get, set };
+})();
+
+const PREF_DEFAULTS = { view: 'office', quality: 'mid', scene: 'office', agent: 'all', showSub: false, showIdle: false, showAgent: true, lang: 'auto' };
+function validPreference(k, v) {
+  if (!Object.hasOwn(PREF_DEFAULTS, k)) return false;
+  if (typeof PREF_DEFAULTS[k] === 'boolean') return typeof v === 'boolean';
+  if (k === 'view') return ['office', 'list'].includes(v);
+  if (k === 'quality') return ['mid', 'high'].includes(v);
+  if (k === 'agent') return ['all', ...Object.keys(OFFICE_AGENT_BADGES)].includes(v);
+  if (k === 'lang') return v === 'auto' || Object.hasOwn(I18N, v);
+  return typeof v === 'string' && /^[a-z0-9-]+$/.test(v);
+}
+function readPreferences() {
+  return Object.fromEntries(Object.entries(PREF_DEFAULTS).map(([k, d]) => {
+    const v = store.get(k, d);
+    return [k, validPreference(k, v) ? v : d];
+  }));
+}
+const PIP = new URLSearchParams(location.search).get('pip') === '1';
+if (PIP) document.body.classList.add('pip');
+
+// ?view=office&quality=high&scene=pirate (what `--scene` opens) sets the prefs.
+{
+  const q = new URLSearchParams(location.search);
+  if (PIP) {
+    try {
+      for (const [k, v] of Object.entries(JSON.parse(q.get('prefs')) || {})) if (validPreference(k, v)) store.set(k, v);
+    } catch { /* malformed preferences use the saved defaults */ }
+  }
+  for (const k of ['view', 'quality', 'scene', 'lang']) if (validPreference(k, q.get(k))) store.set(k, q.get(k));
+  if (location.search) history.replaceState(null, '', location.pathname + (PIP ? '?pip=1' : ''));
+}
+
+const state = {
+  ...readPreferences(),
+  scenes: [],
+  data: { now: Date.now(), sessions: [] },
+  skew: 0,
+  prev: new Map(),
+  flash: new Set(),
+};
+let popout = null;
+
+const ACTIVE = new Set(['thinking', 'tool', 'typing']);
+const AGENT_NAME = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' };
+const GROUPS = [
+  { key: 'needsYou', match: (s) => s === 'waiting' || s === 'error' },
+  { key: 'working', match: (s) => ACTIVE.has(s) },
+  { key: 'finished', match: (s) => s === 'done' || s === 'interrupted' },
+  { key: 'idle', match: (s) => s === 'idle' },
+];
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function dur(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${String(s % 60).padStart(2, '0')}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${String(m % 60).padStart(2, '0')}m`;
+}
+
+function ago(t, now) {
+  const s = Math.round((t - now) / 1000);
+  if (s > -45) return rtf.format(0, 'second');
+  const m = Math.round(s / 60);
+  if (m > -60) return rtf.format(m, 'minute');
+  const h = Math.round(m / 60);
+  if (h > -24) return rtf.format(h, 'hour');
+  return rtf.format(Math.round(h / 24), 'day');
+}
+
+function timeLabel(s, now) {
+  if ((ACTIVE.has(s.status) || s.status === 'waiting') && s.turnStartedAt) return dur(now - s.turnStartedAt);
+  return s.lastEventAt ? ago(s.lastEventAt, now) : '';
+}
+
+// Single-quote for POSIX shells: inside '…' nothing ($(), backticks, $VAR)
+// is expanded, so a folder or session name can't run anything when pasted.
+const shq = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
+function resumeCmd(s) {
+  const cd = s.cwd ? `cd ${shq(s.cwd)} && ` : '';
+  if (s.agent === 'claude') return `${cd}claude --resume ${shq(s.id)}`;
+  if (s.agent === 'gemini') return `${cd}gemini --resume ${shq(s.sessionId || s.id)}`;
+  return `${cd}codex resume ${shq(s.id)}`;
+}
+
+function agentLogo(agent) {
+  const badge = OFFICE_AGENT_BADGES[agent];
+  return badge ? `<img class="agent-logo" src="${badge.logo}" alt="" aria-hidden="true">` : '';
+}
+
+function card(s, now) {
+  const project = s.project || (s.cwd ? s.cwd : '—');
+  const title = s.title && s.title !== project ? `<div class="title" title="${esc(s.title)}">${esc(s.title)}</div>` : '';
+  const act = s.activity ? `<span class="act" title="${esc(s.activity)}">${esc(s.activity)}</span>` : '';
+  const showText = !s.subagent || ACTIVE.has(s.status);
+  const q = showText && s.prompt ? `<div class="q" title="${esc(s.prompt)}">${esc(s.prompt)}</div>` : '';
+  const r = showText && s.reply && !ACTIVE.has(s.status) ? `<div class="r" title="${esc(s.reply)}">${esc(s.reply)}</div>` : '';
+  const err = s.error ? `<div class="err">${esc(s.error)}</div>` : '';
+  const sub = s.subagent ? ` · ${L.sub}` : '';
+  return `
+  <div class="card${s.subagent ? ' sub' : ''}${state.flash.has(s.key) ? ' flash' : ''}" data-s="${s.status}" data-key="${esc(s.key)}">
+    <div class="top">
+      <span class="agent ${esc(s.agent)}">${agentLogo(s.agent)}${esc(AGENT_NAME[s.agent] || s.agent)}</span>
+      <span class="project" title="${esc(s.cwd)}">${esc(project)}</span>
+      <span class="time" data-time="${esc(s.key)}">${esc(timeLabel(s, now))}</span>
+    </div>
+    ${title}
+    <div class="status"><span class="ind"><i></i><i></i><i></i></span><span class="lbl">${esc(L[s.status] || s.status)}</span>${act}</div>
+    ${err}${q}${r}
+    <div class="foot"><span class="model">${esc((s.model || '') + sub)}</span><button class="copy" data-copy="${esc(resumeCmd(s))}">${L.copy}</button></div>
+  </div>`;
+}
+
+function visible() {
+  return state.data.sessions.filter((s) =>
+    (state.agent === 'all' || s.agent === state.agent) &&
+    (state.showSub || !s.subagent) &&
+    (state.showIdle || s.status !== 'idle'));
+}
+
+function render() {
+  const now = Date.now() - state.skew;
+  const list = visible();
+  const all = state.data.sessions.filter((s) => (state.agent === 'all' || s.agent === state.agent) && (state.showSub || !s.subagent));
+
+  const count = (f) => all.filter((s) => f(s.status)).length;
+  document.getElementById('summary').innerHTML = GROUPS.slice(0, 3).map((g) => {
+    const n = count(g.match);
+    const color = g.key === 'needsYou' ? 'var(--waiting)' : g.key === 'working' ? 'var(--tool)' : 'var(--done)';
+    return `<span class="chip"><span class="dot" style="color:${color}"></span>${L[g.key]} <b>${n}</b></span>`;
+  }).join('');
+
+  const working = count((s) => ACTIVE.has(s));
+  const needs = count(GROUPS[0].match);
+  document.title = (needs ? `(${needs}!) ` : working ? `(${working}) ` : '') + L.title;
+
+  const main = document.getElementById('main');
+  const officeMode = state.view === 'office';
+  document.getElementById('officeWrap').style.display = officeMode ? '' : 'none';
+  // The office decides who sits at a desk and who wanders around.
+  const officeList = all;
+  const poppedOut = !!popout?.win;
+  // Wait for the first snapshot so people start at their places instead of
+  // all walking in through the door.
+  if (office && state.loaded) {
+    office.showAgent = state.showAgent;
+    office.setVisible(officeMode && !poppedOut);
+    office.update(officeList);
+  }
+  document.getElementById('idleToggle').style.display = officeMode ? 'none' : '';
+  if (poppedOut) {
+    document.getElementById('officeWrap').style.display = 'none';
+    main.innerHTML = `<div class="empty">${esc(L.pipOn)}</div>`;
+    hideTip();
+    return;
+  }
+  if (officeMode) {
+    main.innerHTML = officeList.length ? '' : `<div class="empty">${esc(L.empty)}</div>`;
+    document.getElementById('officeWrap').style.display = officeList.length ? '' : 'none';
+    refreshTip();
+    return;
+  }
+  const groups = PIP ? GROUPS.slice(0, 2) : GROUPS;
+  if (!list.some((s) => groups.some((g) => g.match(s.status)))) {
+    main.innerHTML = `<div class="empty">${esc(PIP ? L.pipQuiet : L.empty)}</div>`;
+    return;
+  }
+  main.innerHTML = groups.map((g) => {
+    const items = list.filter((s) => g.match(s.status));
+    if (!items.length) return '';
+    return `<section><h2>${L[g.key]} <span class="n">${items.length}</span></h2><div class="grid">${items.map((s) => card(s, now)).join('')}</div></section>`;
+  }).join('');
+}
+
+function tickTimes() {
+  if (tipKey) refreshTip();
+  const now = Date.now() - state.skew;
+  const byKey = new Map(state.data.sessions.map((s) => [s.key, s]));
+  document.querySelectorAll('[data-time]').forEach((el) => {
+    const s = byKey.get(el.dataset.time);
+    if (s) el.textContent = timeLabel(s, now);
+  });
+}
+
+function onData(data) {
+  state.skew = Date.now() - data.now;
+  const first = state.prev.size === 0;
+  state.flash.clear();
+  for (const s of data.sessions) {
+    const before = state.prev.get(s.key);
+    if (!first && before && ACTIVE.has(before) && (s.status === 'done' || s.status === 'waiting')) {
+      state.flash.add(s.key);
+      if (!PIP && !s.subagent && window.Notification && Notification.permission === 'granted') {
+        try { new Notification(s.status === 'done' ? L.doneNote(s.project || s.agent) : `${s.project || s.agent}: ${L.waiting}`, { body: s.reply || s.activity || '', tag: s.key }); } catch {}
+      }
+    }
+    state.prev.set(s.key, s.status);
+  }
+  state.data = data;
+  state.loaded = true;
+  applyLang(chooseLang(data.lang));
+  render();
+}
+
+function connect() {
+  const es = new EventSource('/events');
+  const conn = document.getElementById('conn');
+  es.onmessage = (e) => { conn.classList.remove('on'); onData(JSON.parse(e.data)); };
+  es.onerror = () => conn.classList.add('on');
+}
+
+// Native disclosure keeps settings keyboard-accessible without a modal focus trap.
+const settingsMenu = document.getElementById('settingsMenu');
+document.addEventListener('click', (e) => {
+  if (!settingsMenu.contains(e.target)) settingsMenu.open = false;
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && settingsMenu.open) {
+    settingsMenu.open = false;
+    settingsMenu.querySelector('summary').focus();
+  }
+});
+settingsMenu.addEventListener('toggle', () => { if (settingsMenu.open) hideTip(); });
+
+document.getElementById('qualSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.quality = b.dataset.v; store.set('quality', state.quality); hideTip(); syncControls(); makeOffice();
+});
+document.getElementById('viewSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.view = b.dataset.v; store.set('view', state.view); hideTip(); syncControls(); render();
+});
+document.getElementById('agentSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.agent = b.dataset.v; store.set('agent', state.agent); syncControls(); render();
+});
+const showSub = document.getElementById('showSub');
+const showIdle = document.getElementById('showIdle');
+const showAgent = document.getElementById('showAgent');
+showSub.addEventListener('change', () => { state.showSub = showSub.checked; store.set('showSub', state.showSub); render(); });
+showIdle.addEventListener('change', () => { state.showIdle = showIdle.checked; store.set('showIdle', state.showIdle); render(); });
+showAgent.addEventListener('change', () => { state.showAgent = showAgent.checked; store.set('showAgent', state.showAgent); syncControls(); render(); });
+
+const notifyBtn = document.getElementById('notify');
+function syncControls() {
+  document.querySelectorAll('#agentSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.agent));
+  document.querySelectorAll('#viewSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.view));
+  document.querySelectorAll('#qualSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.quality));
+  document.getElementById('qualSeg').style.display = state.view === 'office' ? '' : 'none';
+  document.getElementById('sceneGroup').hidden = state.view !== 'office' || state.quality !== 'high';
+  const activeFilter = document.getElementById('activeFilter');
+  activeFilter.hidden = state.agent === 'all';
+  activeFilter.textContent = AGENT_NAME[state.agent] || '';
+  document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', b.classList.contains('on')));
+  showSub.checked = state.showSub;
+  showIdle.checked = state.showIdle;
+  showAgent.checked = state.showAgent;
+  document.getElementById('agentBadgeToggle').style.display = state.view === 'office' ? '' : 'none';
+  document.getElementById('agentLegend').hidden = !state.showAgent;
+  popout?.sync(PIP, state.view);
+  if (!window.Notification) notifyBtn.style.display = 'none';
+  else if (Notification.permission === 'granted') { notifyBtn.textContent = L.notifyOn; notifyBtn.disabled = true; }
+}
+notifyBtn.addEventListener('click', () => Notification.requestPermission().then(syncControls));
+
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-copy]'); if (!b) return;
+  navigator.clipboard?.writeText(b.dataset.copy).then(() => {
+    b.textContent = L.copied; setTimeout(() => (b.textContent = L.copy), 1400);
+  });
+});
+
+// ---- office view
+const tip = document.getElementById('tip');
+let tipKey = null, tipPinned = false, tipAt = { x: 0, y: 0 };
+function placeTip() {
+  const r = tip.getBoundingClientRect();
+  let x = tipAt.x + 16, y = tipAt.y + 16;
+  if (x + r.width > innerWidth - 8) x = tipAt.x - r.width - 16;
+  if (y + r.height > innerHeight - 8) y = Math.max(8, innerHeight - r.height - 8);
+  tip.style.left = Math.max(8, x) + 'px';
+  tip.style.top = y + 'px';
+}
+function refreshTip() {
+  if (!tipKey) return;
+  const s = state.data.sessions.find((x) => x.key === tipKey);
+  if (!s) return hideTip();
+  tip.innerHTML = card(s, Date.now() - state.skew);
+  placeTip();
+}
+function hideTip() { tipKey = null; tipPinned = false; tip.style.display = 'none'; tip.classList.remove('pinned'); }
+const officeOpts = {
+  compact: PIP,
+  onFrame: (renderer) => popout?.drawPreview(renderer),
+  label: (s) => s.project || AGENT_NAME[s.agent] || s.agent,
+  onHover(s, at, click) {
+    if (click) {
+      if (!s) return hideTip();
+      tipPinned = true; tip.classList.add('pinned');
+    } else if (tipPinned) return;
+    if (!s) { if (!tipPinned) hideTip(); return; }
+    tipKey = s.key; tipAt = at;
+    tip.style.display = 'block';
+    refreshTip();
+  },
+};
+let office = null;
+let officeKind = null;
+// The 3D office (three.js + models) is only fetched when someone picks it.
+// Until the new office has drawn a settled frame, show a loader instead of a
+// half-built scene.
+const officeEl = document.getElementById('office');
+function setLoading(on, text) {
+  officeEl.classList.toggle('loading', on);
+  if (text) document.getElementById('loaderText').textContent = text;
+}
+async function makeOffice() {
+  const high = state.quality === 'high';
+  const scene = high && state.scene !== 'office' && state.scenes.some((x) => x.id === state.scene) ? state.scene : 'office';
+  const kind = high ? `high:${scene}` : 'mid';
+  if (kind === officeKind) return;
+  officeKind = kind;
+  setLoading(true, high ? L.loading3d : L.loading2d);
+  let Cls = window.Office;
+  const opts = { ...officeOpts, showAgent: state.showAgent };
+  if (high) {
+    try {
+      Cls = (await import('/office3d.js')).Office3D;
+      if (scene !== 'office') {
+        const m = await fetch(`/scenes/${scene}/manifest.json`).then((r) => r.json());
+        opts.scene = { ...m, base: `/scenes/${scene}/` };
+      }
+    } catch (e) { console.error(e); Cls = window.Office; }
+    if (officeKind !== kind) return;
+  }
+  if (office) office.destroy();
+  let mine;
+  try {
+    mine = new Cls(officeEl, opts);
+  } catch (e) {
+    console.error(e);
+    mine = new window.Office(officeEl, officeOpts);
+    if (high) { state.quality = 'mid'; store.set('quality', 'mid'); officeKind = 'mid'; syncControls(); }
+  }
+  office = mine;
+  office.offDutyLabel = L.wentHome;
+  render();
+  const ok = await mine.ready;
+  if (office !== mine) return;
+  if (!ok && high) {
+    // 3D failed (no WebGL, missing files…): fall back to the 2D office.
+    setLoading(true, L.failed3d);
+    state.quality = 'mid'; store.set('quality', 'mid'); syncControls();
+    setTimeout(() => makeOffice(), 1200);
+    return;
+  }
+  setLoading(false);
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideTip(); });
+
+// Scenes (3D only): the built-in office plus any installed scene packs.
+const sceneSel = document.getElementById('sceneSeg');
+state.available = [];
+function renderSceneSel() {
+  const name = (x) => (x.name && (x.name[langCode] || x.name.en)) || x.id;
+  const kb = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+  const current = state.scenes.some((x) => x.id === state.scene) ? state.scene : 'office';
+  const btn = (v, label, title = '') =>
+    `<button data-v="${esc(v)}" class="${v === current ? 'on' : ''}" aria-pressed="${v === current}"${title ? ` title="${esc(title)}"` : ''}>${label}</button>`;
+  sceneSel.innerHTML = btn('office', `🏢 ${esc(L.office)}`) +
+    state.scenes.map((x) => btn(x.id, `${esc(x.icon || '🗺️')} ${esc(name(x))}`, x.credits || '')).join('') +
+    state.available.map((x) => btn(`dl:${x.id}`, `⬇ ${esc(x.icon || '')} ${esc(name(x))} <small>${kb(x.size)}</small>`, `${L.dl} ${kb(x.size)}`)).join('');
+}
+function loadScenes() {
+  return fetch('/api/scenes').then((r) => r.json()).then((d) => {
+    state.scenes = d.installed || [];
+    state.available = d.available || [];
+    renderSceneSel();
+  }).catch(() => {});
+}
+sceneSel.addEventListener('click', async (e) => {
+  const b = e.target.closest('button');
+  if (!b || b.classList.contains('on') || sceneSel.dataset.busy) return;
+  let id = b.dataset.v;
+  hideTip();
+  if (id.startsWith('dl:')) {
+    // A scene pack: download it (the server checks its checksum), then switch.
+    id = id.slice(3);
+    sceneSel.dataset.busy = '1';
+    setLoading(true, L.installing);
+    const r = await fetch(`/api/scenes/install?id=${encodeURIComponent(id)}`, { method: 'POST', headers: { 'x-whatsmyagentdoing': 'install' } })
+      .then((x) => x.json()).catch(() => ({ ok: false }));
+    await loadScenes();
+    delete sceneSel.dataset.busy;
+    if (!r.ok) { setLoading(true, L.installFailed); setTimeout(() => setLoading(false), 2000); renderSceneSel(); return; }
+  }
+  state.scene = id; store.set('scene', id); renderSceneSel(); makeOffice();
+});
+// Know the installed scenes before building the first office, so a saved
+// scene choice doesn't build the default office first and then swap.
+const scenesReady = loadScenes();
+
+// ---- version + one-click update
+const verEl = document.getElementById('ver');
+let verInfo = null;
+function renderVersion() {
+  if (!verInfo) return;
+  let html = `<span>v${esc(verInfo.version)}</span>`;
+  if (verInfo.updateAvailable) {
+    html = verInfo.canUpdate
+      ? `<button id="updBtn">⬆ ${esc(L.update)} v${esc(verInfo.latest)}</button>` + html
+      : `<span>${esc(L.gitPull)} → v${esc(verInfo.latest)}</span>` + html;
+  } else {
+    html = `<button id="chkBtn">${esc(L.checkUpdate)}</button>` + html;
+  }
+  verEl.innerHTML = html;
+  // a second, more visible way in, next to the title
+  const top = document.getElementById('newVer');
+  top.hidden = !(verInfo.updateAvailable && verInfo.canUpdate);
+  if (!top.hidden && !top.disabled) top.textContent = `⬆ ${L.newVersion} v${verInfo.latest}`;
+  top.onclick = () => { const b2 = document.getElementById('updBtn'); if (b2) { top.disabled = true; top.textContent = L.updating; b2.click(); } };
+  const b = document.getElementById('updBtn');
+  if (b) b.onclick = async () => {
+    b.disabled = true; b.textContent = L.updating;
+    const r = await fetch('/api/update', { method: 'POST', headers: { 'x-whatsmyagentdoing': 'update' } }).then((x) => x.json()).catch(() => ({ ok: false }));
+    if (!r.ok) { b.textContent = `${L.updateFailed}${r.error ? ': ' + r.error : ''}`; setTimeout(renderVersion, 4000); return; }
+    b.textContent = L.updated;
+    // the server restarts itself; reload once it answers again
+    const t0 = Date.now();
+    const wait = setInterval(() => {
+      fetch('/api/version', { cache: 'no-store' }).then((x) => x.json()).then((v) => {
+        if (v.version !== verInfo.version || Date.now() - t0 > 20000) { clearInterval(wait); location.reload(); }
+      }).catch(() => {});
+    }, 1000);
+  };
+  // checking is manual: nothing goes to GitHub until this button is pressed
+  const c = document.getElementById('chkBtn');
+  if (c) c.onclick = async () => {
+    c.disabled = true;
+    const v = await fetch('/api/version?check=1', { cache: 'no-store' }).then((x) => x.json()).catch(() => null);
+    if (v) verInfo = v;
+    if (verInfo.updateAvailable) { renderVersion(); return; }
+    c.textContent = v && v.latest ? L.upToDate : L.checkFailed;
+    setTimeout(renderVersion, 4000);
+  };
+}
+let verTimer = null;
+function loadVersion() {
+  fetch('/api/version', { cache: 'no-store' }).then((r) => r.json()).then((v) => {
+    verInfo = v; renderVersion();
+    // AUTO_UPDATE_CHECK in src/config.js: the server already checked on this
+    // request; keep asking every 30 minutes
+    if (v.auto && !verTimer) verTimer = setInterval(loadVersion, 30 * 60 * 1000);
+  }).catch(() => {});
+}
+loadVersion();
+
+const langSel = document.getElementById('langSel');
+langSel.innerHTML = '<option value="auto"></option>' +
+  Object.entries(I18N).map(([k, v]) => `<option value="${k}">${v.langName}</option>`).join('');
+langSel.value = store.get('lang', 'auto');
+langSel.addEventListener('change', () => {
+  store.set('lang', langSel.value);
+  applyLang(chooseLang(state.data.lang));
+  render();
+});
+document.getElementById('agentLegend').innerHTML = Object.entries(OFFICE_AGENT_BADGES)
+  .map(([key, a]) => `<span>${agentLogo(key)}${a.label}</span>`).join('');
+popout = new OfficePopout({
+  preferences: () => ({ ...Object.fromEntries(Object.keys(PREF_DEFAULTS).map((k) => [k, state[k]])), lang: store.get('lang', 'auto') }),
+  office: () => office,
+  text: (key) => L[key],
+  changed: () => { syncControls(); render(); },
+});
+// Both windows share preferences; keep filters, language, scene and badges in
+// sync even when changes come from the compact window or another open tab.
+window.addEventListener('storage', (e) => {
+  if (e.key !== null && !Object.keys(PREF_DEFAULTS).some((k) => e.key === 'wmad.' + k)) return;
+  Object.assign(state, readPreferences());
+  langSel.value = state.lang;
+  hideTip();
+  applyLang(chooseLang(state.data.lang));
+  syncControls();
+  renderSceneSel();
+  makeOffice();
+  render();
+});
+applyLang(chooseLang(null));
+syncControls();
+scenesReady.then(() => makeOffice());
+connect();
+setInterval(tickTimes, 1000);
+</script>
+</body>
+</html>

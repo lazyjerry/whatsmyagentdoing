@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path"
@@ -33,12 +34,10 @@ var (
 	sceneUserDir    = filepath.Join(homeDir, ".whatsmyagentdoing", "scenes")
 )
 
-// Scenes resolves catalog and pack locations under one repo root.
-type Scenes struct {
-	root string
-}
+// Scenes reads the embedded catalog and the packs installed under the user's home.
+type Scenes struct{}
 
-func (sc Scenes) dirs() []string { return []string{sceneUserDir, filepath.Join(sc.root, "scenes")} }
+func (sc Scenes) dirs() []string { return []string{sceneUserDir} }
 
 // CatalogEntry is one row of scenes.json plus the computed download URL.
 type CatalogEntry struct {
@@ -65,7 +64,7 @@ type Installed struct {
 
 func (sc Scenes) Catalog() []CatalogEntry {
 	// scenes.json stores only the pack's file name; the release it lives in comes from config.
-	raw, err := os.ReadFile(filepath.Join(sc.root, "scenes.json"))
+	raw, err := fs.ReadFile(staticFS, "scenes.json")
 	if err != nil {
 		return nil
 	}

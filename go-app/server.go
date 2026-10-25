@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -202,7 +204,6 @@ func snapshot(src Source, opts Options) Snapshot {
 }
 
 type Server struct {
-	root     string
 	src      Source
 	opts     Options
 	scenes   Scenes
@@ -216,12 +217,11 @@ type Server struct {
 	done    chan struct{}
 }
 
-func NewServer(root string, src Source, opts Options, updater *Updater, onShutdown, onRestart func()) *Server {
+func NewServer(src Source, opts Options, updater *Updater, onShutdown, onRestart func()) *Server {
 	s := &Server{
-		root:     root,
 		src:      src,
 		opts:     opts,
-		scenes:   Scenes{root: root},
+		scenes:   Scenes{},
 		updater:  updater,
 		shutdown: onShutdown,
 		restart:  onRestart,
@@ -317,6 +317,38 @@ func (s *Server) serveFile(w http.ResponseWriter, root, rel string) {
 	io.Copy(w, f)
 }
 
+// serveEmbedded answers with a file under one folder (mount) of the embedded
+// static/ tree. Like the Node version, a path that escapes its folder or ends
+// in a slash is a 404, even though the embedded tree itself has nothing secret.
+func serveEmbedded(w http.ResponseWriter, mount, rel, typ, cache string) {
+	if rel == "" || strings.HasSuffix(rel, "/") {
+		w.WriteHeader(404)
+		return
+	}
+	rel = path.Clean("/" + mount + "/" + rel)[1:]
+	if typ == "" {
+		typ = mimeTypes[strings.ToLower(path.Ext(rel))]
+	}
+	if typ == "" || !strings.HasPrefix(rel, mount+"/") || !fs.ValidPath(rel) {
+		w.WriteHeader(404)
+		return
+	}
+	f, err := staticFS.Open(rel)
+	if err != nil {
+		w.WriteHeader(404)
+		return
+	}
+	defer f.Close()
+	if st, err := f.Stat(); err != nil || st.IsDir() {
+		w.WriteHeader(404)
+		return
+	}
+	w.Header().Set("Content-Type", typ)
+	w.Header().Set("Cache-Control", cache)
+	w.WriteHeader(200)
+	io.Copy(w, f)
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Refuse anything not addressed to loopback (blocks DNS-rebinding pages
 	// from reading your prompts through this server).
@@ -332,21 +364,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case staticFiles[p] != [2]string{}:
 		entry := staticFiles[p]
-		f, err := os.Open(filepath.Join(s.root, "public", entry[0]))
-		if err != nil {
-			w.WriteHeader(404)
-			return
-		}
-		defer f.Close()
-		w.Header().Set("Content-Type", entry[1])
-		w.Header().Set("Cache-Control", "no-store")
-		w.WriteHeader(200)
-		io.Copy(w, f)
+		serveEmbedded(w, "public", entry[0], entry[1], "no-store")
 
 	case strings.HasPrefix(p, "/assets/"):
 		// 3D models, served as-is (3D view only).
 		rel, _ := url.PathUnescape(strings.TrimPrefix(p, "/assets/"))
-		s.serveFile(w, filepath.Join(s.root, "assets"), rel)
+		serveEmbedded(w, "assets", rel, "", "no-cache")
 
 	case strings.HasPrefix(p, "/scenes/"):
 		rel, _ := url.PathUnescape(strings.TrimPrefix(p, "/scenes/"))

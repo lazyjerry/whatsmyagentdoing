@@ -6,9 +6,12 @@ package main
 // AutoUpdateCheck in config.go makes it automatic. Set WMAD_NO_UPDATE_CHECK=1
 // to turn it off.
 //
-// Updating is `git pull --ff-only` in the clone followed by `go build` in
-// go-app/, so it needs a git clone and a Go toolchain on PATH. The running
-// binary is replaced in place and the CLI restarts it.
+// The binary carries its own copy of the page, so updating means refreshing
+// the sources and rebuilding: `git pull --ff-only` in the clone that holds
+// go-app/, `scripts/sync-static.sh`, then `go build` over this executable.
+// That only works when the executable still sits in its go-app/ source
+// folder (see sourceDir); elsewhere canUpdate is false and the page hides
+// the Update button.
 
 import (
 	"context"
@@ -29,29 +32,15 @@ import (
 const checkEvery = 30 * time.Minute
 
 type Updater struct {
-	root string
-
 	mu        sync.Mutex
 	latest    string
 	checkedAt time.Time
 	inflight  chan struct{} // closed when the current fetch finishes
 }
 
-func NewUpdater(root string) *Updater { return &Updater{root: root} }
+func NewUpdater() *Updater { return &Updater{} }
 
-func (u *Updater) LocalVersion() string {
-	raw, err := os.ReadFile(filepath.Join(u.root, "package.json"))
-	if err != nil {
-		return "0.0.0"
-	}
-	var pkg struct {
-		Version string `json:"version"`
-	}
-	if json.Unmarshal(raw, &pkg) != nil || pkg.Version == "" {
-		return "0.0.0"
-	}
-	return pkg.Version
-}
+func (u *Updater) LocalVersion() string { return embeddedVersion }
 
 func newer(a, b string) bool {
 	pa, pb := strings.Split(a, "."), strings.Split(b, ".")
@@ -139,10 +128,7 @@ func (u *Updater) CheckLatest(force bool) string {
 	return u.latest
 }
 
-func (u *Updater) CanUpdate() bool {
-	_, err := os.Stat(filepath.Join(u.root, ".git"))
-	return err == nil
-}
+func (u *Updater) CanUpdate() bool { return sourceDir() != "" }
 
 type VersionInfo struct {
 	Version         string  `json:"version"`
@@ -165,45 +151,51 @@ func (u *Updater) Info() VersionInfo {
 	return info
 }
 
-// Update pulls the clone and rebuilds this binary in place.
+// Update pulls the clone, re-syncs static/ and rebuilds this binary in place.
+// It returns the version the new binary carries (read from the synced VERSION
+// file, since this process still runs the old one).
 func (u *Updater) Update() (string, error) {
-	if !u.CanUpdate() {
-		return "", fmt.Errorf("not a git clone (%s); reinstall it with git clone to get updates", u.root)
+	src := sourceDir()
+	if src == "" {
+		return "", errors.New("this binary is not inside its go-app/ source folder; rebuild from a git clone to get updates (or set WMAD_SRC)")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	pull := exec.CommandContext(ctx, "git", "-C", u.root, "pull", "--ff-only", "--quiet")
-	if out, err := pull.CombinedOutput(); err != nil {
-		msg := strings.TrimSpace(string(out))
-		if msg == "" {
-			msg = err.Error()
-		}
-		return "", errors.New(msg)
-	}
-	if err := u.rebuild(); err != nil {
-		return "", err
-	}
-	return u.LocalVersion(), nil
-}
-
-func (u *Updater) rebuild() error {
+	clone := filepath.Dir(src)
 	exe, err := os.Executable()
 	if err != nil {
-		return err
+		return "", err
 	}
 	if real, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = real
 	}
+
+	run := func(timeout time.Duration, dir string, name string, args ...string) (string, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, name, args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		return strings.TrimSpace(string(out)), err
+	}
+
+	if out, err := run(60*time.Second, clone, "git", "pull", "--ff-only", "--quiet"); err != nil {
+		if out == "" {
+			out = err.Error()
+		}
+		return "", errors.New(out)
+	}
+	if out, err := run(60*time.Second, src, "bash", filepath.Join(src, "scripts", "sync-static.sh")); err != nil {
+		return "", fmt.Errorf("sources updated, but syncing static/ failed: %s", firstNonEmpty(out, err.Error()))
+	}
 	goBin, err := exec.LookPath("go")
 	if err != nil {
-		return fmt.Errorf("sources updated, but `go` is not on PATH; rebuild by hand: cd %s && go build -o %s .", filepath.Join(u.root, "go-app"), exe)
+		return "", fmt.Errorf("sources updated, but `go` is not on PATH; rebuild by hand: cd %s && go build -o %s .", src, exe)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-	build := exec.CommandContext(ctx, goBin, "build", "-o", exe, ".")
-	build.Dir = filepath.Join(u.root, "go-app")
-	if out, err := build.CombinedOutput(); err != nil {
-		return fmt.Errorf("sources updated, but rebuild failed: %s", strings.TrimSpace(string(out)))
+	if out, err := run(5*time.Minute, src, goBin, "build", "-o", exe, "."); err != nil {
+		return "", fmt.Errorf("sources updated, but rebuild failed: %s", firstNonEmpty(out, err.Error()))
 	}
-	return nil
+	v, err := os.ReadFile(filepath.Join(src, "static", "VERSION"))
+	if err != nil {
+		return u.LocalVersion(), nil
+	}
+	return strings.TrimSpace(string(v)), nil
 }
