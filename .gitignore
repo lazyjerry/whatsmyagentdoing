@@ -3,3 +3,6 @@ node_modules/
 *.log
 dist/
 packs/
+docs/adr/
+go-app/whatsmyagentdoing
+go-app/whatsmyagentdoing.exe
