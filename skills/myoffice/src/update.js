@@ -56,8 +56,22 @@ async function checkLatest(force = false) {
   return state.checking;
 }
 
+// The skill lives in skills/myoffice/ of the clone, so .git sits a few levels
+// above ROOT. __dirname is already the real path, so a symlinked install
+// (ai-global, or a hand-made ~/.claude/skills/myoffice link) resolves too.
+function gitRoot() {
+  let dir = ROOT;
+  for (let i = 0; i < 5; i++) {
+    if (fs.existsSync(path.join(dir, '.git'))) return dir;
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return null;
+}
+
 function canUpdate() {
-  return fs.existsSync(path.join(ROOT, '.git'));
+  return gitRoot() !== null;
 }
 
 function info() {
@@ -73,8 +87,9 @@ function info() {
 
 function update() {
   return new Promise((resolve, reject) => {
-    if (!canUpdate()) return reject(new Error(`not a git clone (${ROOT}); reinstall it with git clone to get updates`));
-    execFile('git', ['-C', ROOT, 'pull', '--ff-only', '--quiet'], { timeout: 60000 }, (err, stdout, stderr) => {
+    const repo = gitRoot();
+    if (!repo) return reject(new Error(`not a git clone (${ROOT}); reinstall it with git clone to get updates`));
+    execFile('git', ['-C', repo, 'pull', '--ff-only', '--quiet'], { timeout: 60000 }, (err, stdout, stderr) => {
       if (err) return reject(new Error(String(stderr || err.message).trim()));
       resolve(localVersion());
     });

@@ -16,8 +16,11 @@ const BRANCH = 'main';
 // line. WMAD_NO_UPDATE_CHECK=1 turns checks off either way.
 const AUTO_UPDATE_CHECK = false;
 
+// Where this skill lives inside the repo (the clone root also holds go-app/ and docs/).
+const SKILL_PATH = 'skills/myoffice';
+
 const REPO_URL = `https://github.com/${REPO}`;
-const LATEST_URL = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/package.json`;
+const LATEST_URL = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${SKILL_PATH}/package.json`;
 
 function sceneReleaseUrl(file) {
   return `${REPO_URL}/releases/download/scenes/${file}`;
