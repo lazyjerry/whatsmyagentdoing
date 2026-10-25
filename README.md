@@ -1,108 +1,116 @@
 # 👀 whatsmyagentdoing
 
-**A Claude Code / Codex skill: type `/myoffice` and see what every Claude Code, Codex and Gemini CLI agent on your machine is doing — live, in a little office.**
+**一個 Claude Code / Codex skill：輸入 `/myoffice`，即時看到你機器上每一個 Claude Code、Codex 與 Gemini CLI agent 正在做什麼——在一間小小的辦公室裡。**
 
-![The 3D office: agents at their desks, off-duty ones wandering around](docs/office-3d.gif)
+![3D 辦公室：agent 坐在座位上工作，下班的在四處閒晃](docs/office-3d.gif)
 
-| Medium (2D) | List |
+| Medium（2D） | 清單 |
 |---|---|
-| ![2D office](docs/office-2d.gif) | ![List view](docs/list.gif) |
+| ![2D 辦公室](docs/office-2d.gif) | ![清單檢視](docs/list.gif) |
 
-<sub>Recorded with `--demo` (a made-up team), so no real sessions are shown.</sub>
+<sub>以 `--demo`（虛構團隊）錄製，畫面中沒有任何真實 session。</sub>
 
-## Install
+## 安裝
 
-**Easiest: ask your agent.** Paste this into Claude Code or Codex:
+**最簡單：請你的 agent 幫你裝。** 把這段貼進 Claude Code 或 Codex：
 
-> Install the myoffice skill from https://github.com/Charonyuu/whatsmyagentdoing: clone it with `git clone --depth 1` into `~/.claude/skills/myoffice` (for Codex: `~/.codex/skills/myoffice`), check that `node --version` is 18 or newer, then tell me to start a new session and type /myoffice.
+> Install the myoffice skill from https://github.com/lazyjerry/whatsmyagentdoing: clone it with `git clone --depth 1` into `~/.claude/skills/myoffice` (for Codex: `~/.codex/skills/myoffice`), check that `node --version` is 18 or newer, then tell me to start a new session and type /myoffice.
 
-Or do it yourself:
+或自己動手：
 
 ```bash
 # Claude Code
-git clone --depth 1 https://github.com/Charonyuu/whatsmyagentdoing ~/.claude/skills/myoffice
+git clone --depth 1 https://github.com/lazyjerry/whatsmyagentdoing ~/.claude/skills/myoffice
 
 # Codex
-git clone --depth 1 https://github.com/Charonyuu/whatsmyagentdoing ~/.codex/skills/myoffice
+git clone --depth 1 https://github.com/lazyjerry/whatsmyagentdoing ~/.codex/skills/myoffice
 ```
 
-Then type **`/myoffice`** (or just ask *"what are my agents doing?"*). The office opens in your browser. Update later with `git -C ~/.claude/skills/myoffice pull`.
+或用 [ai-global](https://github.com/lazyjerry/ai-global) 一次裝給所有 AI 工具：
 
-Needs Node.js 18+. Nothing to `npm install` — the repo runs as cloned. Prefer no skill? `node bin/cli.js` from a clone works too.
+```bash
+ai-global add-skill lazyjerry/whatsmyagentdoing
+```
 
-It opens an isometric **office**. Agents that are working sit at cubicle desks: a thought bubble while thinking, typing with code scrolling on the monitor while a tool runs, standing up and waving when they need you. A handful of recently finished agents stay around off duty and wander: coffee and water in the pantry, the couch and beanbags, the bookshelf, the meeting-room whiteboard, the arcade cabinet, ping-pong and foosball (when two of them are free), the phone booth, or a nap at an empty desk. Everyone else has gone home. The windows follow your local time of day (and in Medium there's an office cat). Hover anyone to see what they're on.
+skill 會裝進 `~/.ai-global/v-skills/` 並以 symlink 同步給 Claude Code、Codex 等工具；之後用 `ai-global update-skills` 更新，`ai-global remove-skill lazyjerry/whatsmyagentdoing` 移除。
 
-Two looks: **Medium** is a hand-drawn 2D canvas (zero dependencies). **High (3D)** renders the same office with real-time lighting and shadows using [Kenney](https://kenney.nl)'s CC0 *Mini Characters* (with their walk / sit / interact animations) and *Furniture Kit*; drag to rotate, scroll to zoom. The 3D bundle (three.js, ~180 KB gzipped) and models (~1.3 MB, meshopt-compressed) only load when you pick High.
+接著輸入 **`/myoffice`**（或直接問「我的 agent 在做什麼？」）。辦公室會在瀏覽器裡開啟。之後要更新就跑 `git -C ~/.claude/skills/myoffice pull`（ai-global 安裝的則用 `ai-global update-skills`）。
 
-**Scenes (3D):** the office is built in; other scenes are small downloadable packs (Pirate Cove, Café, Space Station and Castle are 100–160 KB each), fetched only when you pick one from the scene buttons, run `--scene pirate`, or ask your agent for it. Packs are data only (a manifest plus Kenney CC0 models) and are checked against a pinned SHA-256 before they're installed into `~/.whatsmyagentdoing/scenes`.
+需要 Node.js 18 以上。不必 `npm install`——clone 下來就能跑。不想用 skill？從 clone 目錄執行 `node bin/cli.js` 也行。
 
-Prefer plain cards? Switch to **List**. Either way, each session updates in real time:
+開啟的是一間等角視角的**辦公室**。正在工作的 agent 坐在隔間座位上：思考時冒出思考泡泡、執行工具時打字且螢幕上有程式碼捲動、需要你介入時會站起來揮手。最近剛完工的幾個 agent 會留在辦公室裡下班閒晃：到茶水間喝咖啡、喝水，坐沙發、懶骨頭，逛書架，在會議室白板前塗寫，打街機、打桌球或手足球（兩個人都有空時），進電話亭，或找張空桌小睡。其他人都回家了。窗景跟著你的本地時間變化（Medium 模式還有一隻辦公室貓）。滑鼠移到任何人身上就能看到它正在處理什麼。
 
-| Status | Meaning |
+兩種畫風：**Medium** 是手繪風 2D canvas（零依賴）。**High（3D）** 用即時光影渲染同一間辦公室，採用 [Kenney](https://kenney.nl) 的 CC0 *Mini Characters*（含走路／坐下／互動動畫）與 *Furniture Kit*；拖曳旋轉、捲動縮放。3D bundle（three.js，gzip 後約 180 KB）與模型（約 1.3 MB，meshopt 壓縮）只在選擇 High 時才載入。
+
+**場景（3D）：** 辦公室內建；其他場景是可下載的小型場景包（Pirate Cove、Café、Space Station、Castle 各 100–160 KB），只在你從場景按鈕點選、執行 `--scene pirate`、或請 agent 幫你切換時才會抓取。場景包只有資料（一份 manifest 加上 Kenney CC0 模型），安裝到 `~/.whatsmyagentdoing/scenes` 前會先比對釘住的 SHA-256。
+
+偏好純卡片？切到**清單**檢視。不論哪種檢視，每個 session 都是即時更新：
+
+| 狀態 | 意義 |
 |---|---|
-| 💭 Thinking | reasoning, or reading a tool result |
-| ⏳ Running | a tool call is in flight — shows which (`Bash: npm test`, `Edit app.ts`, `github · create_pr`) |
-| ✍️ Writing reply | started its answer, turn not finished yet |
-| 🟠 Waiting for you | asked you a question / needs approval |
-| ✅ Done | turn finished, with the last reply |
-| ■ Interrupted / ❗ Error / – Idle | |
+| 💭 思考中 | 正在推理，或在讀工具結果 |
+| ⏳ 執行中 | 有工具呼叫正在跑——會顯示是哪個（`Bash: npm test`、`Edit app.ts`、`github · create_pr`） |
+| ✍️ 撰寫回覆 | 已開始回答，但這一輪還沒結束 |
+| 🟠 等你回應 | 問了你問題／需要你核准 |
+| ✅ 完成 | 這一輪結束，附上最後的回覆 |
+| ■ 中斷／❗ 錯誤／– 閒置 | |
 
-The UI speaks English, 繁體中文, 简体中文, 日本語, 한국어, Español, Français, Deutsch and Português. By default it uses the language you write your prompts in (falling back to your browser's); pick one from the 🌐 menu to override.
+介面支援 English、繁體中文、简体中文、日本語、한국어、Español、Français、Deutsch 與 Português。預設跟著你寫 prompt 的語言（沒有就跟瀏覽器語言）；可從 🌐 選單手動指定。
 
-In list view, sessions are grouped into **Needs you → Working → Finished**, with a live timer for the current turn, a copy button for the resume command (`claude --resume …` / `codex resume …`), optional browser notifications when an agent finishes, and filters for Claude / Codex / subagents. The tab title shows how many agents are working.
+清單檢視中，session 分成 **需要你 → 工作中 → 已完成** 三組，附目前這一輪的即時計時器、resume 指令的複製按鈕（`claude --resume …` / `codex resume …`）、agent 完工時的瀏覽器通知（可選），以及 Claude / Codex / subagent 篩選器。分頁標題會顯示有多少個 agent 在工作。
 
-**Agent badges:** in both 2D and 3D, transparent official Claude, Codex and Gemini logos identify each agent beside its name, including subagents. The same icons appear in the legend, list cards and filters. Open **Settings → Agent badges** to hide the office markers and legend; your choice is saved. Icons are bundled locally, with initials as a fallback if an image cannot load. See [icon sources and attribution](assets/agents/README.md).
+**Agent 徽章：** 2D 與 3D 中，每個 agent（含 subagent）名字旁都有透明底的 Claude、Codex、Gemini 官方 logo。相同圖示也出現在圖例、清單卡片與篩選器。到 **設定 → Agent 徽章** 可隱藏辦公室標記與圖例，設定會保存。圖示隨套件附帶於本機，圖片載入失敗時以縮寫字母替代。詳見[圖示來源與授權](assets/agents/README.md)。
 
-The toolbar keeps the view, 2D/3D and pop-out controls visible. Scene selection, agent filters, display options, notifications and language are grouped under **Settings**.
+工具列固定顯示檢視、2D/3D 與彈出視窗控制項。場景選擇、agent 篩選、顯示選項、通知與語言則收在**設定**裡。
 
-**Pop out:** browsers with the [Document Picture-in-Picture API](https://developer.chrome.com/docs/web-platform/document-picture-in-picture) can open the office or list in an interactive, always-on-top window. The compact list shows **Needs you** and **Working**. View, quality, scene, filters, language and badge settings stay in sync with the main tab when browser storage is available. Closing the pop-out restores the main view, and only the main tab sends notifications.
+**彈出視窗：** 支援 [Document Picture-in-Picture API](https://developer.chrome.com/docs/web-platform/document-picture-in-picture) 的瀏覽器可以把辦公室或清單開成可互動、永遠置頂的視窗。精簡清單只顯示 **需要你** 與 **工作中**。瀏覽器儲存可用時，檢視、畫質、場景、篩選、語言與徽章設定會與主分頁同步。關閉彈出視窗會還原主檢視，且只有主分頁會送通知。
 
-When Document PiP isn't available, **Pop out** in office view starts a local, view-only video preview of the 2D or 3D office. Use its video PiP button, or the browser's own video controls/context menu (such as Firefox's), to float it. Stop the preview when finished. No screen-sharing permission is needed and no video is uploaded. Background animation may run at a lower frame rate, depending on browser throttling; this fallback doesn't support list cards or clicking agents.
+當 Document PiP 不可用時，辦公室檢視的 **彈出** 會改為啟動本機的唯讀影片預覽（2D 或 3D 辦公室）。用它的影片 PiP 按鈕，或瀏覽器自己的影片控制項／右鍵選單（例如 Firefox）把它浮起來。用完請停止預覽。不需要螢幕分享權限，也不會上傳任何影片。背景動畫可能因瀏覽器節流而降低幀率；這個 fallback 不支援清單卡片，也不能點選 agent。
 
-Works with Claude Code (CLI, desktop, IDE), Codex (CLI, desktop, IDE) and Gemini CLI — anything that writes session logs to disk. (Google Antigravity keeps its conversations in an undocumented binary store and isn't supported yet.)
+支援 Claude Code（CLI、桌面版、IDE）、Codex（CLI、桌面版、IDE）與 Gemini CLI——只要會把 session log 寫到磁碟的工具都行。（Google Antigravity 把對話存在未公開的二進位儲存裡，目前還不支援。）
 
-## Options
+## 選項
 
 ```
--p, --port <n>    Port (default 4545; next free one if taken)
---hours <n>       Sessions active in the last n hours (default 24)
---no-open         Don't open the browser
---private         Hide prompts, replies and titles — status only (screen-share safe)
---json            Print one snapshot as JSON and exit
---demo            Show a made-up team instead of your sessions (screenshots, trying it out)
---stop            Stop a running dashboard (or say /myoffice stop)
---update          git pull the latest version and restart (or say /myoffice update)
---scenes          List 3D scenes, installed and downloadable
---scene <id>      Download a scene if needed and open the office in it
+-p, --port <n>    連接埠（預設 4545；被佔用時取下一個可用的）
+--hours <n>       只顯示最近 n 小時內有活動的 session（預設 24）
+--no-open         不開啟瀏覽器
+--private         隱藏 prompt、回覆與標題——只顯示狀態（螢幕分享安全）
+--json            輸出一份 JSON 快照後結束
+--demo            顯示虛構團隊而非你的 session（截圖、試玩用）
+--stop            停止正在執行的 dashboard（或說 /myoffice stop）
+--update          git pull 最新版並重啟（或說 /myoffice update）
+--scenes          列出 3D 場景，含已安裝與可下載的
+--scene <id>      視需要下載場景，並以該場景開啟辦公室
 ```
 
-Running it again while it's up just reopens the tab.
+執行中再跑一次只會重新開啟分頁。
 
-**Updates:** the page shows its version in the corner and an **Update** button when a newer one is out (it checks the `package.json` on this repo's main branch about every half hour; set `WMAD_NO_UPDATE_CHECK=1` to turn that off). The button — or `--update`, or `/myoffice update` — runs `git pull` in the install folder and restarts the dashboard.
+**更新：** 頁面角落顯示版本號與 **檢查更新** 按鈕；只有按下時才會抓一次本 repo main 分支的 `package.json`，不會自動檢查，有新版時改顯示 **Update** 按鈕。要改成自動（頁面載入與每半小時、CLI 啟動時都檢查），把 `src/config.js` 的 `AUTO_UPDATE_CHECK` 改成 `true`；設定 `WMAD_NO_UPDATE_CHECK=1` 則兩種模式都不檢查。按下按鈕——或執行 `--update`、或說 `/myoffice update`——會在安裝目錄執行 `git pull` 並重啟 dashboard。
 
-## How it works
+## 運作原理
 
-No hooks, no config, no API keys. Both tools already append every message and tool call to JSONL files as they work:
+不需要 hook、不需要設定、不需要 API key。這些工具本來就會在工作時把每則訊息與工具呼叫 append 到 JSONL 檔：
 
-- Claude Code: `~/.claude/projects/<project>/<session>.jsonl` (+ `subagents/`)
-- Codex: `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
-- Gemini CLI: `~/.gemini/tmp/<project>/chats/session-*.jsonl` (project paths from `~/.gemini/projects.json`)
+- Claude Code：`~/.claude/projects/<project>/<session>.jsonl`（＋ `subagents/`）
+- Codex：`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
+- Gemini CLI：`~/.gemini/tmp/<project>/chats/session-*.jsonl`（專案路徑取自 `~/.gemini/projects.json`）
 
-`whatsmyagentdoing` tails those files (read-only), turns the latest event into a status, and pushes it to the page over Server-Sent Events. Set `CLAUDE_CONFIG_DIR` / `CODEX_HOME` / `GEMINI_CLI_HOME` if yours live elsewhere.
+`whatsmyagentdoing` 以唯讀方式 tail 這些檔案，把最新事件轉成狀態，再透過 Server-Sent Events 推到頁面。檔案位置不同的話，設定 `CLAUDE_CONFIG_DIR` / `CODEX_HOME` / `GEMINI_CLI_HOME` 即可。
 
-**Privacy:** nothing leaves your machine. The server binds to `127.0.0.1` only and rejects requests that aren't addressed to localhost. No runtime dependencies — read `src/` in five minutes. (`web/office3d.js` is the 3D source; `npm run build` bundles it with three.js into `public/office3d.js`.)
+**隱私：** 沒有任何東西離開你的機器。伺服器只綁定 `127.0.0.1`，並拒絕非 localhost 的請求。沒有執行期依賴——五分鐘就能讀完 `src/`。（`web/office3d.js` 是 3D 原始碼；`npm run build` 會把它與 three.js 打包成 `public/office3d.js`。）
 
-## Limits
+## 限制
 
-- Logs are written per finished block, not per token, so "Writing reply" means a reply block has landed and the turn isn't over — not a live keystroke stream.
-- Claude Code doesn't log permission prompts, so a tool waiting on your approval shows as "Running" until you answer (Codex and Gemini CLI do log it, so those show "Waiting for you").
-- Gemini CLI writes its thoughts together with the reply, so between your prompt and its first tool call or reply it simply shows "Thinking".
-- The log formats aren't public APIs. If an update changes them, statuses may degrade — please open an issue.
+- Log 是以完成的區塊為單位寫入，不是逐 token，所以「撰寫回覆」代表一個回覆區塊已落地且這一輪還沒結束——不是即時的按鍵串流。
+- Claude Code 不會記錄權限提示，所以等待你核准的工具會一直顯示「執行中」直到你回應（Codex 與 Gemini CLI 會記錄，因此會顯示「等你回應」）。
+- Gemini CLI 把思考過程與回覆一起寫入，所以從你的 prompt 到它第一次工具呼叫或回覆之間，只會顯示「思考中」。
+- Log 格式不是公開 API。若更新改了格式，狀態判讀可能退化——請開 issue 回報。
 
-## Development checks
+## 開發檢查
 
-Development checks require Node.js 20+ (the dashboard itself still runs on Node.js 18+). Run `npm install`, then `npm run build` to rebuild the committed 3D bundle. With Google Chrome installed, `npm run test:ui` runs the browser regression checks against a temporary local server and made-up sessions. Use `WMAD_HEADED=1 npm run test:ui` to see the test windows, or set `WMAD_SCREENSHOTS` to an output folder to save screenshots. The checks cover logo rendering, compact views, settings synchronization, notifications, PiP recovery, video-stream cleanup and responsive settings in light and dark themes. They use Chrome; Firefox and Safari's native video controls still need manual testing.
+開發檢查需要 Node.js 20 以上（dashboard 本身仍只需 Node.js 18 以上）。先 `npm install`，再以 `npm run build` 重建已提交的 3D bundle。若有安裝 Google Chrome，`npm run test:ui` 會對臨時本機伺服器與虛構 session 執行瀏覽器回歸檢查。用 `WMAD_HEADED=1 npm run test:ui` 可看到測試視窗，或設定 `WMAD_SCREENSHOTS` 為輸出資料夾以保存截圖。檢查涵蓋 logo 渲染、精簡檢視、設定同步、通知、PiP 復原、video stream 清理，以及亮／暗主題下的響應式設定。這些檢查使用 Chrome；Firefox 與 Safari 的原生影片控制項仍需手動測試。
 
-## License
+## 授權
 
-MIT. 3D models in `assets/kenney/` are by [Kenney](https://kenney.nl), released under CC0 (see the license files there).
+MIT。`assets/kenney/` 內的 3D 模型由 [Kenney](https://kenney.nl) 製作，以 CC0 釋出（見該目錄的授權檔）。
