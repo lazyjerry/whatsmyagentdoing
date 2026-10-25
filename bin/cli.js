@@ -93,15 +93,6 @@ function stopAt(port) {
   });
 }
 
-// Agents read this line (see SKILL.md) and offer the update.
-async function printUpdateHint() {
-  await updater.checkLatest(true);
-  const i = updater.info();
-  if (i.updateAvailable) {
-    console.log(`Update available: v${i.version} → v${i.latest}. Run with --update (or /myoffice update), or click "Update" on the page.`);
-  }
-}
-
 async function main() {
   const o = parseArgs(process.argv.slice(2));
 
@@ -171,7 +162,6 @@ async function main() {
   if (await alreadyRunning(o.port)) {
     const url = `http://localhost:${o.port}${query}`;
     console.log(`Already running at ${url}`);
-    await printUpdateHint();
     if (o.open) openBrowser(url);
     return;
   }
@@ -202,7 +192,6 @@ async function main() {
       const openUrl = url + query;
       const what = o.demo ? 'demo team' : `${n} session${n === 1 ? '' : 's'} in the last ${o.hours}h`;
       console.log(`whatsmyagentdoing v${updater.localVersion()} → ${url}  (${what}, Ctrl+C to stop)`);
-      printUpdateHint();
       if (o.open) openBrowser(openUrl);
     });
   };

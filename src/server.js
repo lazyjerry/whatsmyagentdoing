@@ -162,7 +162,10 @@ function createServer(watcher, opts, { onShutdown, onRestart } = {}) {
       for (const c of clients) c.end();
       setTimeout(onShutdown, 50);
     } else if (url.pathname === '/api/version') {
-      updater.checkLatest().finally(() => {
+      // Only ?check=1 (the page's "Check for updates" button) goes to GitHub;
+      // a plain GET answers from what is already known.
+      const checked = url.searchParams.get('check') === '1' ? updater.checkLatest() : Promise.resolve();
+      checked.finally(() => {
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
         res.end(JSON.stringify(updater.info()));
       });

@@ -738,6 +738,8 @@ function renderVersion() {
     html = verInfo.canUpdate
       ? `<button id="updBtn">⬆ ${esc(L.update)} v${esc(verInfo.latest)}</button>` + html
       : `<span>${esc(L.gitPull)} → v${esc(verInfo.latest)}</span>` + html;
+  } else {
+    html = `<button id="chkBtn">${esc(L.checkUpdate)}</button>` + html;
   }
   verEl.innerHTML = html;
   // a second, more visible way in, next to the title
@@ -759,12 +761,21 @@ function renderVersion() {
       }).catch(() => {});
     }, 1000);
   };
+  // checking is manual: nothing goes to GitHub until this button is pressed
+  const c = document.getElementById('chkBtn');
+  if (c) c.onclick = async () => {
+    c.disabled = true;
+    const v = await fetch('/api/version?check=1', { cache: 'no-store' }).then((x) => x.json()).catch(() => null);
+    if (v) verInfo = v;
+    if (verInfo.updateAvailable) { renderVersion(); return; }
+    c.textContent = v && v.latest ? L.upToDate : L.checkFailed;
+    setTimeout(renderVersion, 4000);
+  };
 }
 function loadVersion() {
   fetch('/api/version', { cache: 'no-store' }).then((r) => r.json()).then((v) => { verInfo = v; renderVersion(); }).catch(() => {});
 }
 loadVersion();
-setInterval(loadVersion, 30 * 60 * 1000);
 
 const langSel = document.getElementById('langSel');
 langSel.innerHTML = '<option value="auto"></option>' +
