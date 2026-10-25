@@ -26,6 +26,8 @@ function newSession(agent, id, file) {
     model: null,
     subagent: false,
     parentId: null,
+    platform: null,
+    promptKind: null,
     status: 'idle',
     activity: null,
     prompt: null,
@@ -44,7 +46,7 @@ function clean(text, max = 220) {
   const marker = t.lastIndexOf('## My request:');
   if (marker !== -1) t = t.slice(marker + 14);
   t = t
-    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, ' ')
+    .replace(/<(system-reminder|ide_opened_file|ide_selection)>[\s\S]*?<\/\1>/g, ' ')
     .replace(/<command-(message|args)>[\s\S]*?<\/command-\1>/g, ' ')
     // Drop injected context blocks (<foo attr="…">…</foo>); keep short inline tags' text.
     .replace(/<([a-zA-Z][\w-]*)(\s[^>]*)?>[\s\S]*?<\/\1>/g, (m) => (m.length > 300 ? ' ' : m.replace(/<[^>]+>/g, ' ')))
@@ -115,9 +117,27 @@ function describeClaudeTool(name, input = {}) {
   }
 }
 
+// Where a session runs: 'vscode' | 'cli' | 'sdk' | 'desktop'. Claude Code
+// writes `entrypoint` on every record, Codex `originator` in session_meta;
+// Gemini CLI logs carry nothing, so they count as cli.
+function claudePlatform(entrypoint) {
+  if (entrypoint.includes('vscode')) return 'vscode';
+  if (entrypoint.startsWith('sdk')) return 'sdk';
+  return 'cli';
+}
+
+function codexPlatform(originator) {
+  const o = originator.toLowerCase();
+  if (o.includes('desktop')) return 'desktop';
+  if (o.includes('vscode')) return 'vscode';
+  if (o.includes('exec')) return 'sdk';
+  return 'cli';
+}
+
 function applyClaude(s, d) {
   const ts = stamp(s, d.timestamp);
   if (d.cwd) s.cwd = d.cwd;
+  if (d.entrypoint) s.platform = claudePlatform(d.entrypoint);
 
   switch (d.type) {
     case 'custom-title':
@@ -154,6 +174,7 @@ function applyClaude(s, d) {
         if (!s.title && d.isSidechain) s.title = clean(text, 80);
         s.reply = null;
       }
+      s.promptKind = isNotification ? 'notification' : cmd ? 'command' : null;
       s.turnStartedAt = ts;
       set(s, 'thinking', null);
       return;
@@ -216,6 +237,7 @@ function applyCodex(s, d) {
   switch (d.type) {
     case 'session_meta':
       if (p.cwd) s.cwd = p.cwd;
+      if (p.originator) s.platform = codexPlatform(p.originator);
       if (p.source && typeof p.source === 'object' && p.source.subagent) s.subagent = true;
       if (p.parent_thread_id) { s.parentId = p.parent_thread_id; s.subagent = true; }
       if (p.thread_source && p.thread_source !== 'user') s.subagent = true;
@@ -367,6 +389,7 @@ function applyGemini(s, d) {
   // metadata line / $set updates
   const meta = d.$set || (d.sessionId && !d.type ? d : null);
   if (meta) {
+    s.platform = 'cli';
     if (meta.sessionId) s.sessionId = meta.sessionId;
     if (meta.kind === 'subagent') s.subagent = true;
     if (Array.isArray(meta.directories) && meta.directories[0] && !s.cwd) s.cwd = meta.directories[0];
@@ -382,7 +405,7 @@ function applyGemini(s, d) {
     case 'user': {
       const text = clean(geminiText(d.displayContent ?? d.content));
       if (!text) return;
-      if (text.startsWith('/')) { s.prompt = text.split(' ')[0]; } else s.prompt = text;
+      if (text.startsWith('/')) { s.prompt = text.split(' ')[0]; s.promptKind = 'command'; } else { s.prompt = text; s.promptKind = null; }
       s.reply = null;
       s.turnStartedAt = d.timestamp ? Date.parse(d.timestamp) : s.turnStartedAt;
       set(s, 'thinking', null);

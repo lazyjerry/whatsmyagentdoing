@@ -51,6 +51,8 @@ function view(s, now, { privacy }) {
     sessionId: s.sessionId || null,
     parentId: s.parentId,
     subagent: s.subagent,
+    platform: s.platform,
+    promptKind: s.promptKind,
     cwd: s.cwd,
     project: s.cwd ? path.basename(s.cwd) : null,
     title: s.title,

@@ -41,6 +41,7 @@
   "scripts": {
     "build": "esbuild web/office3d.js --bundle --format=esm --minify --target=es2020 --outfile=public/office3d.js --legal-comments=eof",
     "start": "node bin/cli.js",
+    "test": "node --test tests/parsers.test.cjs",
     "test:ui": "node tests/ui.cjs"
   }
 }

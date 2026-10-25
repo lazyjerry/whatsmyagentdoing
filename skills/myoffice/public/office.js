@@ -31,6 +31,11 @@
     badge.image.src = badge.logo;
   }
   const PANTS = ['#34405a', '#2c2c34', '#4a3f35', '#3b4a3f'];
+  // Hair colour says where the session runs (shirt stays the agent's brand);
+  // sessions without a platform keep a random hair colour.
+  const PLATFORM_HAIR = {
+    vscode: ['#c99a5b', '#e0b56a'], cli: ['#2a2019', '#1c1c1c'], sdk: ['#a33a2c', '#c4553f'], desktop: ['#3d3550', '#5b4e7d'],
+  };
   const PANEL = ['#7d93c4', '#d98b6a', '#7fb08a', '#c9a24c'];
 
   const STATUS_COLOR = {
@@ -541,7 +546,7 @@
       const door = this.plan.door;
       return {
         key: s.key, h, s,
-        skin: pick(SKIN, h, 3), hair: pick(HAIR, h, 7), pants: pick(PANTS, h, 13),
+        skin: pick(SKIN, h, 3), hair: pick(PLATFORM_HAIR[s.platform] || HAIR, h, 7), pants: pick(PANTS, h, 13),
         shirt: pick(SHIRT[s.agent] || SHIRT.claude, h, 11),
         hairStyle: h % 4,
         phase: (h % 1000) / 1000 * Math.PI * 2,
@@ -1591,5 +1596,6 @@
 
   window.Office = Office;
   window.OFFICE_AGENT_BADGES = AGENT_BADGES;
+  window.OFFICE_PLATFORM_HAIR = PLATFORM_HAIR;
   window.OfficeGrid = Grid;
 })();

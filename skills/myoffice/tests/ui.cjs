@@ -17,11 +17,11 @@ async function screenshot(page, name) {
 const checks=[];
 const check=(name)=>{checks.push(name);console.log('PASS',name)};
 const sessions = [
- {key:'claude:one', id:'one', agent:'claude',project:'claude-project',status:'thinking'},
- {key:'codex:two', id:'two', agent:'codex',project:'codex-project',status:'waiting'},
- {key:'gemini:three', id:'three', agent:'gemini',project:'gemini-project',status:'tool',activity:'Read: index.js'},
- {key:'claude:done', id:'done', agent:'claude',project:'finished-project',status:'done'},
- {key:'codex:sub', id:'sub', agent:'codex',project:'sub-project',status:'thinking',subagent:true},
+ {key:'claude:one', id:'one', agent:'claude',project:'claude-project',status:'thinking',platform:'vscode'},
+ {key:'codex:two', id:'two', agent:'codex',project:'codex-project',status:'waiting',platform:'cli'},
+ {key:'gemini:three', id:'three', agent:'gemini',project:'gemini-project',status:'tool',activity:'Read: index.js',platform:'cli'},
+ {key:'claude:done', id:'done', agent:'claude',project:'finished-project',status:'done',platform:'sdk',prompt:'/myoffice',promptKind:'command'},
+ {key:'codex:sub', id:'sub', agent:'codex',project:'sub-project',status:'thinking',subagent:true,platform:'vscode'},
 ].map(s=>({...s,lastEventAt:Date.now(),turnStartedAt:Date.now()-1000,cwd:'/demo/'+s.project}));
 async function stable(page){
  await page.waitForFunction(()=>typeof office!=='undefined' && office?.framesShown>4);
@@ -80,6 +80,23 @@ async function drawnLogos(target) {
   await openSettings(page);await page.check('#showSub');
   assert.equal((await badges(page)).length,5);
   check('2D badges identify all three providers and subagents without duplicate activity badges');
+  assert.equal(await page.evaluate(()=>office.label({project:'p',promptKind:'command'})),'⌨️ p');
+  assert.equal(await page.evaluate(()=>office.label({project:'p',promptKind:'notification'})),'🔔 p');
+  assert.equal(await page.evaluate(()=>[...office.people.values()].every(p=>OFFICE_PLATFORM_HAIR[p.s.platform].includes(p.hair))),true);
+  await openSettings(page);await page.click('#platformSeg [data-v=vscode]');
+  assert.equal(await page.locator('#activeFilter').innerText(),'VS Code');
+  await page.click('#viewSeg [data-v=list]');
+  assert.deepEqual(await page.locator('.card .platform').allInnerTexts(),['VS Code','VS Code']);
+  await openSettings(page);await page.click('#platformSeg [data-v=other]');
+  assert.deepEqual(await page.locator('.card .platform').allInnerTexts(),['SDK']);
+  await page.reload();await page.waitForFunction(()=>state.loaded);
+  await page.evaluate(s=>{__events.close();onData({now:Date.now(),sessions:s})},sessions);
+  assert.deepEqual(await page.locator('.card .platform').allInnerTexts(),['SDK']);
+  await openSettings(page);await page.click('#platformSeg [data-v=all]');
+  assert.equal(await page.locator('#activeFilter').isVisible(),false);
+  assert.equal(await page.locator('.card').count(),5);
+  await page.click('#viewSeg [data-v=office]');await stable(page);
+  check('platform filter narrows the list and persists, cards name the platform, 2D hair and labels follow platform and prompt kind');
   await openSettings(page);await page.uncheck('#showAgent');assert.equal((await badges(page)).length,0);
   assert.equal(await page.locator('#agentLegend').isVisible(),false);
   await page.reload();await stable(page);assert.equal(await page.locator('#showAgent').isChecked(),false);
@@ -90,6 +107,8 @@ async function drawnLogos(target) {
   await screenshot(page, 'office-3d');
   assert.deepEqual(await drawnLogos(page),['claude','codex','gemini']);
   check('3D renders the same official provider logos');
+  assert.deepEqual(await page.evaluate(()=>[...office.people.values()].map(p=>[p.s.platform,office.modelName(p).split('-')[0]]).filter(([pf])=>pf==='vscode'||pf==='cli').map(([pf,g])=>`${pf}:${g}`).sort()),['cli:male','cli:male','vscode:female','vscode:female']);
+  check('3D picks the model group from the platform');
   await page.click('#pipBtn');await page.waitForFunction(()=>!!popout.win);
   const pip=context.pages().find(p=>p!==page);assert.ok(pip);
   const frame=await (async()=>{for(let i=0;i<100;i++){const f=pip.frames().find(f=>f.url().includes('?pip=1'));if(f)return f;await new Promise(r=>setTimeout(r,50))}throw Error('No compact frame')})();

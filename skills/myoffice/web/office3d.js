@@ -10,6 +10,12 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
 const CHARACTERS = ['male-a', 'male-b', 'male-c', 'male-d', 'male-e', 'male-f',
   'female-a', 'female-b', 'female-c', 'female-d', 'female-e', 'female-f'];
+// The model group says where the session runs (2D uses hair colour for the
+// same thing); other platforms draw from the whole set.
+const PLATFORM_MODELS = {
+  vscode: CHARACTERS.filter((c) => c.startsWith('female')),
+  cli: CHARACTERS.filter((c) => c.startsWith('male')),
+};
 const FURNITURE = ['desk', 'chairDesk', 'computerScreen', 'computerKeyboard', 'computerMouse', 'laptop',
   'pottedPlant', 'plantSmall1', 'plantSmall2', 'plantSmall3', 'kitchenCabinet', 'kitchenCoffeeMachine',
   'kitchenSink', 'kitchenFridgeLarge', 'kitchenMicrowave', 'stoolBar', 'tableRound', 'table',
@@ -983,10 +989,15 @@ export class Office3D extends window.Office {
 
   // ------------------------------------------------------------ actors
 
+  modelName(p) {
+    const pool = PLATFORM_MODELS[p.s.platform] || CHARACTERS;
+    return pool[p.h % pool.length];
+  }
+
   actorFor(p) {
     let a = this.actors.get(p.key);
     if (a) return a;
-    const gltf = this.chars[p.h % this.chars.length];
+    const gltf = this.chars[CHARACTERS.indexOf(this.modelName(p))];
     const obj = cloneSkinned(gltf.scene);
     obj.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     const box = new THREE.Box3().setFromObject(obj);
