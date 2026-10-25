@@ -34,6 +34,8 @@ type Session struct {
 	Model         string
 	Subagent      bool
 	ParentID      string
+	Platform      string // vscode | cli | sdk | desktop; "" when the log says nothing
+	PromptKind    string // command | notification; "" for a plain prompt
 	Status        string
 	Activity      string
 	Prompt        string
@@ -127,7 +129,13 @@ func truncate(s string, max int) string {
 // ------------------------------------------------------------- text clean-up
 
 var (
-	reSystemReminder = regexp.MustCompile(`(?s)<system-reminder>.*?</system-reminder>`)
+	// Injected context blocks dropped whole, text included (one regex per tag:
+	// RE2 has no backreference to pair the closing tag with the opening one).
+	reContextBlocks = []*regexp.Regexp{
+		regexp.MustCompile(`(?s)<system-reminder>.*?</system-reminder>`),
+		regexp.MustCompile(`(?s)<ide_opened_file>.*?</ide_opened_file>`),
+		regexp.MustCompile(`(?s)<ide_selection>.*?</ide_selection>`),
+	}
 	reCommandMessage = regexp.MustCompile(`(?s)<command-message>.*?</command-message>`)
 	reCommandArgs    = regexp.MustCompile(`(?s)<command-args>.*?</command-args>`)
 	reAnyTag         = regexp.MustCompile(`<[^>]+>`)
@@ -204,7 +212,9 @@ func clean(text string, max int) string {
 	if marker := strings.LastIndex(t, "## My request:"); marker != -1 {
 		t = t[marker+len("## My request:"):]
 	}
-	t = reSystemReminder.ReplaceAllString(t, " ")
+	for _, re := range reContextBlocks {
+		t = re.ReplaceAllString(t, " ")
+	}
 	t = reCommandMessage.ReplaceAllString(t, " ")
 	t = reCommandArgs.ReplaceAllString(t, " ")
 	t = stripPairedTags(t)
@@ -309,6 +319,32 @@ func describeClaudeTool(name string, input map[string]any) string {
 	return name
 }
 
+// Where a session runs: vscode | cli | sdk | desktop. Claude Code writes
+// `entrypoint` on every record, Codex `originator` in session_meta; Gemini
+// CLI logs carry nothing, so they count as cli.
+func claudePlatform(entrypoint string) string {
+	switch {
+	case strings.Contains(entrypoint, "vscode"):
+		return "vscode"
+	case strings.HasPrefix(entrypoint, "sdk"):
+		return "sdk"
+	}
+	return "cli"
+}
+
+func codexPlatform(originator string) string {
+	o := strings.ToLower(originator)
+	switch {
+	case strings.Contains(o, "desktop"):
+		return "desktop"
+	case strings.Contains(o, "vscode"):
+		return "vscode"
+	case strings.Contains(o, "exec"):
+		return "sdk"
+	}
+	return "cli"
+}
+
 func applyClaude(s *Session, v any) {
 	d := asMap(v)
 	if d == nil {
@@ -317,6 +353,9 @@ func applyClaude(s *Session, v any) {
 	ts := stamp(s, str(d, "timestamp"))
 	if cwd := str(d, "cwd"); cwd != "" {
 		s.Cwd = cwd
+	}
+	if ep := str(d, "entrypoint"); ep != "" {
+		s.Platform = claudePlatform(ep)
 	}
 
 	switch str(d, "type") {
@@ -384,6 +423,14 @@ func applyClaude(s *Session, v any) {
 				s.Title = clean(text, 80)
 			}
 			s.Reply = ""
+		}
+		switch {
+		case isNotification:
+			s.PromptKind = "notification"
+		case cmd != nil:
+			s.PromptKind = "command"
+		default:
+			s.PromptKind = ""
 		}
 		s.TurnStartedAt = ts
 		setA(s, "thinking", "")
@@ -502,6 +549,9 @@ func applyCodex(s *Session, v any) {
 	case "session_meta":
 		if cwd := str(p, "cwd"); cwd != "" {
 			s.Cwd = cwd
+		}
+		if o := str(p, "originator"); o != "" {
+			s.Platform = codexPlatform(o)
 		}
 		if src := asMap(p["source"]); src != nil && truthy(src["subagent"]) {
 			s.Subagent = true
@@ -679,6 +729,7 @@ func applyGemini(s *Session, v any) {
 		meta = d
 	}
 	if meta != nil {
+		s.Platform = "cli"
 		if id := str(meta, "sessionId"); id != "" {
 			s.SessionID = id
 		}
@@ -718,8 +769,10 @@ func applyGemini(s *Session, v any) {
 		}
 		if strings.HasPrefix(text, "/") {
 			s.Prompt = strings.SplitN(text, " ", 2)[0]
+			s.PromptKind = "command"
 		} else {
 			s.Prompt = text
+			s.PromptKind = ""
 		}
 		s.Reply = ""
 		if ts := str(d, "timestamp"); ts != "" {

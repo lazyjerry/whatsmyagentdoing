@@ -122,6 +122,10 @@
   .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .agent { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; letter-spacing: .02em; color: var(--muted); flex: none; }
   .agent-logo { width: 20px; height: 20px; object-fit: contain; padding: 1px; flex: none; }
+  .platform { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; flex: none; }
+  #platformSeg { display: flex; margin-top: 8px; }
+  #platformSeg button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+  #platformSeg .hair { width: 10px; height: 10px; border-radius: 50%; background: var(--hair, transparent); flex: none; }
   .project { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .time { margin-left: auto; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; }
   .title { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -247,6 +251,13 @@
               <button data-v="codex"><img class="agent-logo" src="/assets/agents/codex.png" alt="">Codex</button>
               <button data-v="gemini"><img class="agent-logo" src="/assets/agents/gemini.png" alt="">Gemini</button>
             </div>
+            <span class="setting-label" id="platformLabel" data-t="platform"></span>
+            <div class="seg" id="platformSeg" role="group" aria-labelledby="platformLabel">
+              <button data-v="all" class="on" data-t="all"></button>
+              <button data-v="vscode"><i class="hair" data-hair="vscode"></i>VS Code</button>
+              <button data-v="cli"><i class="hair" data-hair="cli"></i>CLI</button>
+              <button data-v="other" data-t="other"></button>
+            </div>
             <div class="setting-toggles">
               <label class="tog"><input type="checkbox" id="showSub"> <span data-t="subagents"></span></label>
               <label class="tog" id="idleToggle"><input type="checkbox" id="showIdle"> <span data-t="showIdle"></span></label>
@@ -323,13 +334,14 @@ const store = (() => {
   return { get, set };
 })();
 
-const PREF_DEFAULTS = { view: 'office', quality: 'mid', scene: 'office', agent: 'all', showSub: false, showIdle: false, showAgent: true, lang: 'auto' };
+const PREF_DEFAULTS = { view: 'office', quality: 'mid', scene: 'office', agent: 'all', platform: 'all', showSub: false, showIdle: false, showAgent: true, lang: 'auto' };
 function validPreference(k, v) {
   if (!Object.hasOwn(PREF_DEFAULTS, k)) return false;
   if (typeof PREF_DEFAULTS[k] === 'boolean') return typeof v === 'boolean';
   if (k === 'view') return ['office', 'list'].includes(v);
   if (k === 'quality') return ['mid', 'high'].includes(v);
   if (k === 'agent') return ['all', ...Object.keys(OFFICE_AGENT_BADGES)].includes(v);
+  if (k === 'platform') return ['all', 'vscode', 'cli', 'other'].includes(v);
   if (k === 'lang') return v === 'auto' || Object.hasOwn(I18N, v);
   return typeof v === 'string' && /^[a-z0-9-]+$/.test(v);
 }
@@ -366,6 +378,14 @@ let popout = null;
 
 const ACTIVE = new Set(['thinking', 'tool', 'typing']);
 const AGENT_NAME = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' };
+// Where the session runs (from the server) and what started its turn.
+const PLATFORM_NAME = { vscode: 'VS Code', cli: 'CLI', sdk: 'SDK', desktop: 'Desktop' };
+const PROMPT_ICON = { command: '⌨️', notification: '🔔' };
+function onPlatform(s) {
+  if (state.platform === 'all') return true;
+  if (state.platform === 'other') return s.platform !== 'vscode' && s.platform !== 'cli';
+  return s.platform === state.platform;
+}
 const GROUPS = [
   { key: 'needsYou', match: (s) => s === 'waiting' || s === 'error' },
   { key: 'working', match: (s) => ACTIVE.has(s) },
@@ -429,6 +449,7 @@ function card(s, now) {
   <div class="card${s.subagent ? ' sub' : ''}${state.flash.has(s.key) ? ' flash' : ''}" data-s="${s.status}" data-key="${esc(s.key)}">
     <div class="top">
       <span class="agent ${esc(s.agent)}">${agentLogo(s.agent)}${esc(AGENT_NAME[s.agent] || s.agent)}</span>
+      ${s.platform ? `<span class="platform">${esc(PLATFORM_NAME[s.platform] || s.platform)}</span>` : ''}
       <span class="project" title="${esc(s.cwd)}">${esc(project)}</span>
       <span class="time" data-time="${esc(s.key)}">${esc(timeLabel(s, now))}</span>
     </div>
@@ -441,7 +462,7 @@ function card(s, now) {
 
 function visible() {
   return state.data.sessions.filter((s) =>
-    (state.agent === 'all' || s.agent === state.agent) &&
+    (state.agent === 'all' || s.agent === state.agent) && onPlatform(s) &&
     (state.showSub || !s.subagent) &&
     (state.showIdle || s.status !== 'idle'));
 }
@@ -449,7 +470,7 @@ function visible() {
 function render() {
   const now = Date.now() - state.skew;
   const list = visible();
-  const all = state.data.sessions.filter((s) => (state.agent === 'all' || s.agent === state.agent) && (state.showSub || !s.subagent));
+  const all = state.data.sessions.filter((s) => (state.agent === 'all' || s.agent === state.agent) && onPlatform(s) && (state.showSub || !s.subagent));
 
   const count = (f) => all.filter((s) => f(s.status)).length;
   document.getElementById('summary').innerHTML = GROUPS.slice(0, 3).map((g) => {
@@ -562,6 +583,11 @@ document.getElementById('agentSeg').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
   state.agent = b.dataset.v; store.set('agent', state.agent); syncControls(); render();
 });
+document.getElementById('platformSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.platform = b.dataset.v; store.set('platform', state.platform); syncControls(); render();
+});
+document.querySelectorAll('#platformSeg .hair').forEach((el) => el.style.setProperty('--hair', OFFICE_PLATFORM_HAIR[el.dataset.hair][0]));
 const showSub = document.getElementById('showSub');
 const showIdle = document.getElementById('showIdle');
 const showAgent = document.getElementById('showAgent');
@@ -572,13 +598,14 @@ showAgent.addEventListener('change', () => { state.showAgent = showAgent.checked
 const notifyBtn = document.getElementById('notify');
 function syncControls() {
   document.querySelectorAll('#agentSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.agent));
+  document.querySelectorAll('#platformSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.platform));
   document.querySelectorAll('#viewSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.view));
   document.querySelectorAll('#qualSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.quality));
   document.getElementById('qualSeg').style.display = state.view === 'office' ? '' : 'none';
   document.getElementById('sceneGroup').hidden = state.view !== 'office' || state.quality !== 'high';
   const activeFilter = document.getElementById('activeFilter');
-  activeFilter.hidden = state.agent === 'all';
-  activeFilter.textContent = AGENT_NAME[state.agent] || '';
+  activeFilter.hidden = state.agent === 'all' && state.platform === 'all';
+  activeFilter.textContent = [AGENT_NAME[state.agent], PLATFORM_NAME[state.platform] || (state.platform === 'other' ? L.other : '')].filter(Boolean).join(' · ');
   document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', b.classList.contains('on')));
   showSub.checked = state.showSub;
   showIdle.checked = state.showIdle;
@@ -620,7 +647,7 @@ function hideTip() { tipKey = null; tipPinned = false; tip.style.display = 'none
 const officeOpts = {
   compact: PIP,
   onFrame: (renderer) => popout?.drawPreview(renderer),
-  label: (s) => s.project || AGENT_NAME[s.agent] || s.agent,
+  label: (s) => (PROMPT_ICON[s.promptKind] ? PROMPT_ICON[s.promptKind] + ' ' : '') + (s.project || AGENT_NAME[s.agent] || s.agent),
   onHover(s, at, click) {
     if (click) {
       if (!s) return hideTip();

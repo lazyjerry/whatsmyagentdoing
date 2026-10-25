@@ -64,6 +64,8 @@ type View struct {
 	SessionID     *string `json:"sessionId"`
 	ParentID      *string `json:"parentId"`
 	Subagent      bool    `json:"subagent"`
+	Platform      *string `json:"platform"`
+	PromptKind    *string `json:"promptKind"`
 	Cwd           *string `json:"cwd"`
 	Project       *string `json:"project"`
 	Title         *string `json:"title"`
@@ -129,6 +131,8 @@ func view(s Session, now int64, privacy bool) View {
 		SessionID:     nstr(s.SessionID),
 		ParentID:      nstr(s.ParentID),
 		Subagent:      s.Subagent,
+		Platform:      nstr(s.Platform),
+		PromptKind:    nstr(s.PromptKind),
 		Cwd:           nstr(s.Cwd),
 		Title:         nstr(s.Title),
 		Model:         nstr(s.Model),
