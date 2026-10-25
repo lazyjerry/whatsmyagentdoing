@@ -86,7 +86,9 @@ go build -o whatsmyagentdoing .
 ## 開發
 
 ```bash
-scripts/sync-static.sh --check && gofmt -l . && go vet ./... && go build -o whatsmyagentdoing .
+scripts/sync-static.sh --check && gofmt -l . && go vet ./... && go test ./... && go build -o whatsmyagentdoing .
 ```
+
+`go test ./...` 跑單元測試與功能測試；功能測試會先 `go build` 一份執行檔來驗 CLI 旗標、啟動與 `--stop`，`go test -short ./...` 跳過這段。測試不讀真實的 session 紀錄、不連網。
 
 對照檢查：兩邊各跑一次 `--json --hours 72`，比對同一組 session 的欄位。前端的打包（`npm run build`）與瀏覽器測試（`npm run test:ui`）仍在上層以 Node 執行。
