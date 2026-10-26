@@ -22,7 +22,7 @@ import (
 
 func helpText(version string) string {
 	return fmt.Sprintf(`whatsmyagentdoing %s (Go)
-See what every Claude Code, Codex and Gemini CLI agent on this machine is doing, live.
+See what every Claude Code, Codex, Gemini CLI and OpenCode agent on this machine is doing, live.
 
 Usage: whatsmyagentdoing [options]
 

@@ -26,7 +26,7 @@
       thinking: 'Thinking', tool: 'Running', typing: 'Writing reply', waiting: 'Waiting for you', done: 'Done', interrupted: 'Interrupted', error: 'Error',
       copy: 'Copy resume cmd', copied: 'Copied ✓', sub: 'subagent', auto: 'Auto',
       kindCommand: 'Slash command', kindNotification: 'Background task', cwd: 'Folder', started: 'Started', lastEvent: 'Last activity', sessionId: 'Session', parentId: 'Parent', workspace: 'Workspace', copyTitle: 'Copy title', openVscode: 'Open in VS Code',
-      empty: 'No Claude Code, Codex or Gemini CLI sessions in the time window. Start one and it shows up here.',
+      empty: 'No Claude Code, Codex, Gemini CLI or OpenCode sessions in the time window. Start one and it shows up here.',
       doneNote: (p) => `${p} is done`,
     },
     'zh-TW': {
@@ -52,7 +52,7 @@
       thinking: '思考中', tool: '執行中', typing: '回覆中', waiting: '等你回應', done: '已完成', interrupted: '已中斷', error: '錯誤',
       copy: '複製接續指令', copied: '已複製 ✓', sub: '子 agent', auto: '自動',
       kindCommand: '斜線指令', kindNotification: '背景通知', cwd: '目錄', started: '開始', lastEvent: '最後活動', sessionId: 'Session', parentId: '上層', workspace: '工作區', copyTitle: '複製標題', openVscode: '在 VS Code 開啟',
-      empty: '這段時間內沒有 Claude Code、Codex 或 Gemini CLI session。開一個就會出現在這裡。',
+      empty: '這段時間內沒有 Claude Code、Codex、Gemini CLI 或 OpenCode session。開一個就會出現在這裡。',
       doneNote: (p) => `${p} 完成了`,
     },
     'zh-CN': {
@@ -78,7 +78,7 @@
       thinking: '思考中', tool: '执行中', typing: '回复中', waiting: '等你回应', done: '已完成', interrupted: '已中断', error: '错误',
       copy: '复制续接命令', copied: '已复制 ✓', sub: '子 agent', auto: '自动',
       kindCommand: '斜杠命令', kindNotification: '后台通知', cwd: '目录', started: '开始', lastEvent: '最后活动', sessionId: 'Session', parentId: '上级', workspace: '工作区', copyTitle: '复制标题', openVscode: '在 VS Code 打开',
-      empty: '这段时间内没有 Claude Code、Codex 或 Gemini CLI 会话。开一个就会出现在这里。',
+      empty: '这段时间内没有 Claude Code、Codex、Gemini CLI 或 OpenCode 会话。开一个就会出现在这里。',
       doneNote: (p) => `${p} 完成了`,
     },
     ja: {
@@ -104,7 +104,7 @@
       thinking: '考え中', tool: '実行中', typing: '返信中', waiting: 'あなた待ち', done: '完了', interrupted: '中断', error: 'エラー',
       copy: '再開コマンドをコピー', copied: 'コピーしました ✓', sub: 'サブ', auto: '自動',
       kindCommand: 'スラッシュコマンド', kindNotification: 'バックグラウンド通知', cwd: 'フォルダ', started: '開始', lastEvent: '最終活動', sessionId: 'セッション', parentId: '親', workspace: 'ワークスペース', copyTitle: 'タイトルをコピー', openVscode: 'VS Code で開く',
-      empty: 'この期間の Claude Code・Codex・Gemini CLI セッションはありません。始めるとここに表示されます。',
+      empty: 'この期間の Claude Code・Codex・Gemini CLI・OpenCode セッションはありません。始めるとここに表示されます。',
       doneNote: (p) => `${p} が完了しました`,
     },
     ko: {
@@ -130,7 +130,7 @@
       thinking: '생각 중', tool: '실행 중', typing: '답변 작성 중', waiting: '응답 대기', done: '완료', interrupted: '중단됨', error: '오류',
       copy: '이어하기 명령 복사', copied: '복사됨 ✓', sub: '하위', auto: '자동',
       kindCommand: '슬래시 명령', kindNotification: '백그라운드 알림', cwd: '폴더', started: '시작', lastEvent: '마지막 활동', sessionId: '세션', parentId: '상위', workspace: '작업 영역', copyTitle: '제목 복사', openVscode: 'VS Code에서 열기',
-      empty: '이 기간에 Claude Code, Codex, Gemini CLI 세션이 없습니다. 시작하면 여기에 나타납니다.',
+      empty: '이 기간에 Claude Code, Codex, Gemini CLI, OpenCode 세션이 없습니다. 시작하면 여기에 나타납니다.',
       doneNote: (p) => `${p} 완료`,
     },
     es: {
@@ -156,7 +156,7 @@
       thinking: 'Pensando', tool: 'Ejecutando', typing: 'Escribiendo', waiting: 'Esperándote', done: 'Listo', interrupted: 'Interrumpido', error: 'Error',
       copy: 'Copiar comando', copied: 'Copiado ✓', sub: 'subagente', auto: 'Auto',
       kindCommand: 'Comando', kindNotification: 'Aviso en segundo plano', cwd: 'Carpeta', started: 'Inicio', lastEvent: 'Última actividad', sessionId: 'Sesión', parentId: 'Padre', workspace: 'Espacio de trabajo', copyTitle: 'Copiar título', openVscode: 'Abrir en VS Code',
-      empty: 'No hay sesiones de Claude Code, Codex ni Gemini CLI en este periodo. Inicia una y aparecerá aquí.',
+      empty: 'No hay sesiones de Claude Code, Codex, Gemini CLI ni OpenCode en este periodo. Inicia una y aparecerá aquí.',
       doneNote: (p) => `${p} terminó`,
     },
     fr: {
@@ -182,7 +182,7 @@
       thinking: 'Réfléchit', tool: 'Exécute', typing: 'Rédige', waiting: 'Vous attend', done: 'Terminé', interrupted: 'Interrompu', error: 'Erreur',
       copy: 'Copier la commande', copied: 'Copié ✓', sub: 'sous-agent', auto: 'Auto',
       kindCommand: 'Commande', kindNotification: 'Notification en arrière-plan', cwd: 'Dossier', started: 'Début', lastEvent: 'Dernière activité', sessionId: 'Session', parentId: 'Parent', workspace: 'Espace de travail', copyTitle: 'Copier le titre', openVscode: 'Ouvrir dans VS Code',
-      empty: 'Aucune session Claude Code, Codex ou Gemini CLI sur la période. Lancez-en une, elle apparaîtra ici.',
+      empty: 'Aucune session Claude Code, Codex, Gemini CLI ou OpenCode sur la période. Lancez-en une, elle apparaîtra ici.',
       doneNote: (p) => `${p} a terminé`,
     },
     de: {
@@ -208,7 +208,7 @@
       thinking: 'Denkt nach', tool: 'Führt aus', typing: 'Schreibt Antwort', waiting: 'Wartet auf dich', done: 'Fertig', interrupted: 'Abgebrochen', error: 'Fehler',
       copy: 'Befehl kopieren', copied: 'Kopiert ✓', sub: 'Sub-Agent', auto: 'Auto',
       kindCommand: 'Befehl', kindNotification: 'Hintergrund-Benachrichtigung', cwd: 'Ordner', started: 'Gestartet', lastEvent: 'Letzte Aktivität', sessionId: 'Sitzung', parentId: 'Übergeordnet', workspace: 'Arbeitsbereich', copyTitle: 'Titel kopieren', openVscode: 'In VS Code öffnen',
-      empty: 'Keine Claude-Code-, Codex- oder Gemini-CLI-Sitzungen im Zeitraum. Starte eine, dann erscheint sie hier.',
+      empty: 'Keine Claude-Code-, Codex-, Gemini-CLI- oder OpenCode-Sitzungen im Zeitraum. Starte eine, dann erscheint sie hier.',
       doneNote: (p) => `${p} ist fertig`,
     },
     pt: {
@@ -234,7 +234,7 @@
       thinking: 'Pensando', tool: 'Executando', typing: 'Escrevendo', waiting: 'Esperando você', done: 'Concluído', interrupted: 'Interrompido', error: 'Erro',
       copy: 'Copiar comando', copied: 'Copiado ✓', sub: 'subagente', auto: 'Auto',
       kindCommand: 'Comando', kindNotification: 'Aviso em segundo plano', cwd: 'Pasta', started: 'Início', lastEvent: 'Última atividade', sessionId: 'Sessão', parentId: 'Pai', workspace: 'Área de trabalho', copyTitle: 'Copiar título', openVscode: 'Abrir no VS Code',
-      empty: 'Nenhuma sessão de Claude Code, Codex ou Gemini CLI no período. Inicie uma e ela aparece aqui.',
+      empty: 'Nenhuma sessão de Claude Code, Codex, Gemini CLI ou OpenCode no período. Inicie uma e ela aparece aqui.',
       doneNote: (p) => `${p} terminou`,
     },
   };

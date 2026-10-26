@@ -37,7 +37,7 @@ func TestHelpTextMentionsEveryFlag(t *testing.T) {
 			t.Errorf("help lacks %s", flag)
 		}
 	}
-	if !strings.Contains(h, claudeDir) || !strings.Contains(h, codexDir) || !strings.Contains(h, geminiDir) {
+	if !strings.Contains(h, claudeDir) || !strings.Contains(h, codexDir) || !strings.Contains(h, geminiDir) || !strings.Contains(h, ocDB) {
 		t.Error("help lists the log directories it reads")
 	}
 }

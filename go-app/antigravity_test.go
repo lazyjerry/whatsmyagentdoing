@@ -76,13 +76,13 @@ func TestAgyRowsBecomeGeminiSessions(t *testing.T) {
 
 func TestAgyUnreadableDbIsSkippedOnce(t *testing.T) {
 	db := agyFixture(t, `insert into conversation_summaries values ('x','','p',1,'`+agyStamp(0)+`','[]','CASCADE_RUN_STATUS_IDLE','','',0,0,0,'`+agyStamp(0)+`');`)
-	old := agyBinary
-	agyBinary = filepath.Join(t.TempDir(), "no-such-sqlite3")
-	t.Cleanup(func() { agyBinary = old })
+	old := sqliteBinary
+	sqliteBinary = filepath.Join(t.TempDir(), "no-such-sqlite3")
+	t.Cleanup(func() { sqliteBinary = old })
 	w := NewWatcher(24)
 	w.Tick()
-	if w.Count() != 0 || !w.agyUnavailable {
-		t.Fatalf("missing sqlite3 must disable the source, db %s: count=%d unavailable=%v", db, w.Count(), w.agyUnavailable)
+	if w.Count() != 0 || !w.agy.unavailable {
+		t.Fatalf("missing sqlite3 must disable the source, db %s: count=%d unavailable=%v", db, w.Count(), w.agy.unavailable)
 	}
 }
 
@@ -91,10 +91,10 @@ func TestAgyReadErrorIsRetriedLater(t *testing.T) {
 	writeFile(t, db, "not a database")
 	w := NewWatcher(24)
 	w.Tick()
-	if w.agyUnavailable || w.agyRetryAt == 0 {
-		t.Fatalf("a failed read must back off, not switch the source off: unavailable=%v retryAt=%d", w.agyUnavailable, w.agyRetryAt)
+	if w.agy.unavailable || w.agy.retryAt == 0 {
+		t.Fatalf("a failed read must back off, not switch the source off: unavailable=%v retryAt=%d", w.agy.unavailable, w.agy.retryAt)
 	}
-	w.agyRetryAt = 0
+	w.agy.retryAt = 0
 	// Fixed in the meantime: the next tick reads it.
 	if err := os.Remove(db); err != nil {
 		t.Fatal(err)

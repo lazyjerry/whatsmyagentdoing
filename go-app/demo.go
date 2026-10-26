@@ -24,13 +24,14 @@ var demoTeam = []demoMember{
 	{"codex", "billing", "Handle failed card retries"},
 	{"claude", "auth-service", "Rotate the signing keys"},
 	{"gemini", "infra", "Bump the Postgres instance size"},
-	{"claude", "blog", "Draft the release notes for v2.3"},
+	{"opencode", "search-service", "Speed up the autocomplete query"},
 }
 
 var demoTools = map[string][]string{
-	"claude": {"Bash: npm test", "Edit routes.ts", "Read schema.prisma", "Grep \"retry\"", "Bash: git diff", "Write README.md", "WebSearch “Postgres upgrade”", "github · create_pull_request"},
-	"gemini": {"Shell: npm run lint", "ReadFile schema.sql", "WebSearch “pg_upgrade”", "Edit pipeline.py"},
-	"codex":  {"Shell: pnpm test", "Shell: rg TODO src", "Editing app.tsx", "Shell: npx tsc --noEmit", "Shell: git status"},
+	"claude":   {"Bash: npm test", "Edit routes.ts", "Read schema.prisma", "Grep \"retry\"", "Bash: git diff", "Write README.md", "WebSearch “Postgres upgrade”", "github · create_pull_request"},
+	"gemini":   {"Shell: npm run lint", "ReadFile schema.sql", "WebSearch “pg_upgrade”", "Edit pipeline.py"},
+	"codex":    {"Shell: pnpm test", "Shell: rg TODO src", "Editing app.tsx", "Shell: npx tsc --noEmit", "Shell: git status"},
+	"opencode": {"Bash: bun test", "Read search.ts", "Grep \"debounce\"", "Edit query.ts", "Bash: git diff"},
 }
 
 var demoReplies = []string{
@@ -40,7 +41,7 @@ var demoReplies = []string{
 	"Updated the docs and the example config.",
 }
 
-var demoModels = map[string]string{"claude": "claude-opus-5-5", "codex": "gpt-5-codex", "gemini": "gemini-3-pro"}
+var demoModels = map[string]string{"claude": "claude-opus-5-5", "codex": "gpt-5-codex", "gemini": "gemini-3-pro", "opencode": "anthropic/claude-sonnet-5-5"}
 
 // One work cycle, in seconds per step.
 var demoScript = []struct {

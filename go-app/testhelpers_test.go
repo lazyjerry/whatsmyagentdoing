@@ -132,15 +132,16 @@ func setLogDirs(t *testing.T) (claude, codex, gemini string) {
 			t.Fatal(err)
 		}
 	}
-	oldClaude, oldCodexDir, oldCodexIndex, oldGemini, oldGeminiDir, oldAgy := claudeDir, codexDir, codexIndex, geminiHomes, geminiDir, agyDB
+	oldClaude, oldCodexDir, oldCodexIndex, oldGemini, oldGeminiDir, oldAgy, oldOC := claudeDir, codexDir, codexIndex, geminiHomes, geminiDir, agyDB, ocDB
 	claudeDir = claude
 	codexDir = filepath.Join(codex, "sessions")
 	codexIndex = filepath.Join(codex, "session_index.jsonl")
 	geminiHomes = []string{gemini}
 	geminiDir = filepath.Join(gemini, "tmp")
 	agyDB = filepath.Join(gemini, "antigravity", "conversation_summaries.db")
+	ocDB = filepath.Join(base, "opencode", "opencode.db")
 	t.Cleanup(func() {
-		claudeDir, codexDir, codexIndex, geminiHomes, geminiDir, agyDB = oldClaude, oldCodexDir, oldCodexIndex, oldGemini, oldGeminiDir, oldAgy
+		claudeDir, codexDir, codexIndex, geminiHomes, geminiDir, agyDB, ocDB = oldClaude, oldCodexDir, oldCodexIndex, oldGemini, oldGeminiDir, oldAgy, oldOC
 	})
 	return claude, codex, gemini
 }

@@ -1,6 +1,6 @@
 ---
 name: myoffice
-description: 開啟一個即時的「辦公室」畫面，顯示這台機器上每個 Claude Code、Codex 與 Gemini CLI agent 的狀態：誰在思考、誰在執行工具、誰在撰寫回覆、誰在等使用者回應、誰已經完成。當使用者輸入 /myoffice、問自己的 agent 在做什麼、想看所有執行中的 session（工作階段）、或想知道哪個 agent 卡住了或已完成（「我的 agent 在幹嘛」、「show my agents」）時使用。
+description: 開啟一個即時的「辦公室」畫面，顯示這台機器上每個 Claude Code、Codex、Gemini CLI 與 OpenCode agent 的狀態：誰在思考、誰在執行工具、誰在撰寫回覆、誰在等使用者回應、誰已經完成。當使用者輸入 /myoffice、問自己的 agent 在做什麼、想看所有執行中的 session（工作階段）、或想知道哪個 agent 卡住了或已完成（「我的 agent 在幹嘛」、「show my agents」）時使用。
 ---
 
 # myoffice
@@ -76,5 +76,5 @@ description: 開啟一個即時的「辦公室」畫面，顯示這台機器上�
   在做什麼時使用：執行 `"<base directory>/bin/whatsmyagentdoing" --json --hours 2`，
   再依狀態摘要說明。
 
-所有資料都從本機的 `~/.claude/projects`、`~/.codex/sessions`、`~/.gemini/tmp` 與 `~/.gemini/antigravity/conversation_summaries.db` 讀取；
+所有資料都從本機的 `~/.claude/projects`、`~/.codex/sessions`、`~/.gemini/tmp`、`~/.gemini/antigravity/conversation_summaries.db` 與 `~/.local/share/opencode/opencode.db` 讀取；
 伺服器只監聽 127.0.0.1，不會把任何資料送到外部。

@@ -23,6 +23,7 @@
     --claude: #c96442;
     --codex: #10a37f;
     --gemini: #4f7cf0;
+    --opencode: #5a5858;
     --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04);
   }
   @media (prefers-color-scheme: dark) {
@@ -256,6 +257,7 @@
               <button data-v="claude"><img class="agent-logo" src="/assets/agents/claude.png" alt="">Claude</button>
               <button data-v="codex"><img class="agent-logo" src="/assets/agents/codex.png" alt="">Codex</button>
               <button data-v="gemini"><img class="agent-logo" src="/assets/agents/gemini.png" alt="">Gemini</button>
+              <button data-v="opencode"><img class="agent-logo" src="/assets/agents/opencode.png" alt="">OpenCode</button>
             </div>
             <span class="setting-label" id="platformLabel" data-t="platform"></span>
             <div class="seg" id="platformSeg" role="group" aria-labelledby="platformLabel">
@@ -390,7 +392,7 @@ const state = {
 let popout = null;
 
 const ACTIVE = new Set(['thinking', 'tool', 'typing']);
-const AGENT_NAME = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' };
+const AGENT_NAME = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', opencode: 'OpenCode' };
 // Where the session runs (from the server) and what started its turn.
 const PLATFORM_NAME = { vscode: 'VS Code', cli: 'CLI', sdk: 'SDK', desktop: 'Desktop' };
 const PROMPT_ICON = { command: '⌨️', notification: '🔔' };
@@ -443,6 +445,7 @@ function resumeCmd(s) {
   if (s.agent === 'claude') return `${cd}claude --resume ${shq(s.id)}`;
   if (s.agent === 'gemini' && s.tool === 'agy') return `${cd}agy --conversation ${shq(s.id)}`;
   if (s.agent === 'gemini') return `${cd}gemini --resume ${shq(s.sessionId || s.id)}`;
+  if (s.agent === 'opencode') return `${cd}opencode --session ${shq(s.id)}`;
   return `${cd}codex resume ${shq(s.id)}`;
 }
 

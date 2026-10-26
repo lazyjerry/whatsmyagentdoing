@@ -236,10 +236,8 @@ type Watcher struct {
 	geminiProjects      map[string]string // tmp dir name -> project path
 	geminiRegistryMtime int64
 	codexIndexMtime     int64
-	agy                 map[string]*Session // conversation id -> Antigravity row (see antigravity.go)
-	agyMtime            int64               // db + WAL mtime at the last successful read
-	agyRetryAt          int64               // a read that failed (e.g. caught mid-checkpoint) is retried after this
-	agyUnavailable      bool                // sqlite3 missing: logged once, then skipped for good
+	agy                 *dbSource // Antigravity rows (see antigravity.go)
+	oc                  *dbSource // OpenCode rows (see opencode.go)
 	lastScan            int64
 	candidates          []candidate
 	changes             chan struct{}
@@ -254,7 +252,8 @@ func NewWatcher(hours float64) *Watcher {
 		failed:         map[string]int64{},
 		codexNames:     map[string]string{},
 		geminiProjects: map[string]string{},
-		agy:            map[string]*Session{},
+		agy:            newDBSource("antigravity", "Antigravity", func() string { return agyDB }, agyRead),
+		oc:             newDBSource("opencode", "OpenCode", func() string { return ocDB }, ocRead),
 		changes:        make(chan struct{}, 1),
 		stop:           make(chan struct{}),
 	}
@@ -352,46 +351,76 @@ func (w *Watcher) loadGeminiProjects() bool {
 	return true
 }
 
-// loadAntigravity re-reads conversation_summaries.db when it (or its WAL)
-// changed; returns true when any session differs from the last read.
-func (w *Watcher) loadAntigravity(now, since int64) bool {
-	if w.agyUnavailable || w.agyRetryAt > now {
+// dbSource is a source read whole from one SQLite database (Antigravity,
+// OpenCode): re-read when the file or its WAL changed, kept as a map of
+// sessions by id.
+type dbSource struct {
+	name        string        // log prefix
+	label       string        // product name for messages
+	db          func() string // resolved per read so tests can repoint it
+	read        func(db string, since int64) ([]*Session, error)
+	sessions    map[string]*Session
+	mtime       int64 // db + WAL mtime at the last successful read
+	retryAt     int64 // a read that failed (e.g. caught mid-checkpoint) is retried after this
+	unavailable bool  // sqlite3 missing: logged once, then skipped for good
+}
+
+func newDBSource(name, label string, db func() string, read func(string, int64) ([]*Session, error)) *dbSource {
+	return &dbSource{name: name, label: label, db: db, read: read, sessions: map[string]*Session{}}
+}
+
+// load re-reads the database when it (or its WAL) changed; returns true when
+// any session differs from the last read.
+func (d *dbSource) load(now, since int64) bool {
+	if d.unavailable || d.retryAt > now {
 		return false
 	}
-	st := statSafe(agyDB)
+	db := d.db()
+	st := statSafe(db)
 	if st == nil {
 		return false
 	}
 	mtime := mtimeMs(st)
-	if wal := statSafe(agyDB + "-wal"); wal != nil && mtimeMs(wal) > mtime {
+	if wal := statSafe(db + "-wal"); wal != nil && mtimeMs(wal) > mtime {
 		mtime = mtimeMs(wal)
 	}
-	if mtime == w.agyMtime {
+	if mtime == d.mtime {
 		return false
 	}
-	rows, err := agyRows(agyDB, since)
-	if errors.Is(err, errAgyNoSqlite) {
-		w.agyUnavailable = true
-		fmt.Fprintf(os.Stderr, "antigravity: sqlite3 not found; Antigravity sessions are off (install sqlite3 and restart)\n")
+	rows, err := d.read(db, since)
+	if errors.Is(err, errNoSqlite) {
+		d.unavailable = true
+		fmt.Fprintf(os.Stderr, "%s: sqlite3 not found; %s sessions are off (install sqlite3 and restart)\n", d.name, d.label)
 		return false
 	}
 	if err != nil {
 		// Transient as a rule: sqlite3 exits 14 (can't open) when the open
 		// races the writer's WAL checkpoint. Try again in a few seconds.
-		w.agyRetryAt = now + 10_000
+		d.retryAt = now + 10_000
 		return false
 	}
-	w.agyMtime = mtime
+	d.mtime = mtime
 	next := map[string]*Session{}
-	changed := len(rows) != len(w.agy)
-	for _, r := range rows {
-		s := agySession(r)
+	changed := len(rows) != len(d.sessions)
+	for _, s := range rows {
 		next[s.ID] = s
-		if old := w.agy[s.ID]; old == nil || *old != *s {
+		if old := d.sessions[s.ID]; old == nil || *old != *s {
 			changed = true
 		}
 	}
-	w.agy = next
+	d.sessions = next
+	return changed
+}
+
+// expire drops sessions that fell out of the window; returns true when any did.
+func (d *dbSource) expire(since int64) bool {
+	changed := false
+	for id, s := range d.sessions {
+		if s.LastEventAt < since {
+			delete(d.sessions, id)
+			changed = true
+		}
+	}
 	return changed
 }
 
@@ -403,7 +432,10 @@ func (w *Watcher) Tick() {
 	if w.loadGeminiProjects() {
 		changed = true
 	}
-	if w.loadAntigravity(now, since) {
+	if w.agy.load(now, since) {
+		changed = true
+	}
+	if w.oc.load(now, since) {
 		changed = true
 	}
 
@@ -440,11 +472,11 @@ func (w *Watcher) Tick() {
 			changed = true
 		}
 	}
-	for id, s := range w.agy {
-		if s.LastEventAt < since {
-			delete(w.agy, id)
-			changed = true
-		}
+	if w.agy.expire(since) {
+		changed = true
+	}
+	if w.oc.expire(since) {
+		changed = true
 	}
 	w.mu.Unlock()
 
@@ -592,7 +624,10 @@ func (w *Watcher) Sessions() []Session {
 		}
 		out = append(out, *s)
 	}
-	for _, s := range w.agy {
+	for _, s := range w.agy.sessions {
+		out = append(out, *s)
+	}
+	for _, s := range w.oc.sessions {
 		out = append(out, *s)
 	}
 	return out
@@ -602,9 +637,9 @@ func (w *Watcher) Sessions() []Session {
 func (w *Watcher) Count() int {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return len(w.trackers) + len(w.agy)
+	return len(w.trackers) + len(w.agy.sessions) + len(w.oc.sessions)
 }
 
 func describeDirs() string {
-	return fmt.Sprintf("  %s\n  %s\n  %s\n  %s", claudeDir, codexDir, geminiDir, agyDB)
+	return fmt.Sprintf("  %s\n  %s\n  %s\n  %s\n  %s", claudeDir, codexDir, geminiDir, agyDB, ocDB)
 }

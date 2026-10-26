@@ -3,30 +3,20 @@ package main
 // Google Antigravity (the `agy` CLI and the Antigravity IDE) keeps no
 // transcript on disk for CLI runs: the only record of a conversation is a
 // row in ~/.gemini/antigravity/conversation_summaries.db (SQLite), written a
-// few seconds into the run and again when it ends. Go's standard library has
-// no SQLite driver and the binary stays dependency-free, so rows are read
-// through the `sqlite3` command line tool (bundled with macOS, a package
-// install elsewhere). No sqlite3 → no Antigravity sessions; nothing else
-// is affected. Sessions keep the `gemini` agent (same model family, same
-// badge) and carry Tool "agy" so the page offers `agy --conversation <id>`.
+// few seconds into the run and again when it ends. Rows are read through the
+// sqlite3 CLI (see sqlite.go); no sqlite3 → no Antigravity sessions.
+// Sessions keep the `gemini` agent (same model family, same badge) and carry
+// Tool "agy" so the page offers `agy --conversation <id>`.
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"net/url"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 )
 
-var (
-	agyDB     = filepath.Join(geminiHomes[0], "antigravity", "conversation_summaries.db")
-	agyBinary = "sqlite3" // overridable in tests
-
-	errAgyNoSqlite = errors.New("sqlite3 not found")
-)
+var agyDB = filepath.Join(geminiHomes[0], "antigravity", "conversation_summaries.db")
 
 // agyRow is one conversation_summaries row as `sqlite3 -json` prints it.
 type agyRow struct {
@@ -48,30 +38,24 @@ type agyRow struct {
 const agySQL = `select conversation_id, title, preview, step_count, last_modified_time, last_user_input_time, workspace_uris, status, source, parent_conversation_id, nesting_depth, not_fully_idle, killed from conversation_summaries where last_modified_time >= '%s' order by last_modified_time desc limit 500`
 
 // agyRows runs the query against db for rows modified at or after sinceMs.
-// `mode=ro` (not `immutable`) so rows an active run has written to the WAL
-// are seen.
 func agyRows(db string, sinceMs int64) ([]agyRow, error) {
-	bin, err := exec.LookPath(agyBinary)
-	if err != nil {
-		return nil, errAgyNoSqlite
-	}
 	since := time.UnixMilli(sinceMs).UTC().Format("2006-01-02 15:04:05")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "-json", "file:"+db+"?mode=ro", strings.Replace(agySQL, "%s", since, 1))
-	out, err := cmd.Output()
+	var rows []agyRow
+	err := sqliteJSON(db, strings.Replace(agySQL, "%s", since, 1), &rows)
+	return rows, err
+}
+
+// agyRead is the dbSource reader: every row in the window as a Session.
+func agyRead(db string, sinceMs int64) ([]*Session, error) {
+	rows, err := agyRows(db, sinceMs)
 	if err != nil {
 		return nil, err
 	}
-	out = []byte(strings.TrimSpace(string(out)))
-	if len(out) == 0 {
-		return nil, nil // sqlite3 prints nothing at all for zero rows
+	out := make([]*Session, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, agySession(r))
 	}
-	var rows []agyRow
-	if err := json.Unmarshal(out, &rows); err != nil {
-		return nil, err
-	}
-	return rows, nil
+	return out, nil
 }
 
 // agyTime parses "2026-10-26 04:00:37.785627+00:00" (fraction optional).

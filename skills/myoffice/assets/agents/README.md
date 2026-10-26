@@ -17,3 +17,9 @@ Retrieved 2026-10-25, artwork unchanged:
 - `gemini.png`: Google's official Gemini product icon, downloaded from
   https://www.gstatic.com/lamda/images/gemini_sparkle_4g_512_lt_f94943af3be039176192d.png
   (linked by https://gemini.google.com/).
+
+Retrieved 2026-10-26, artwork unchanged:
+
+- `opencode.png`: OpenCode's official website favicon, downloaded from
+  https://opencode.ai/favicon.svg (linked by https://opencode.ai/) and
+  rasterised to 128×128 PNG with the same colours and paths.

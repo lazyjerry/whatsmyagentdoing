@@ -17,6 +17,7 @@
     claude: ['#c96442', '#d9825f', '#b4553a', '#e09a72'],
     codex: ['#10a37f', '#2bb38f', '#0d8a6b', '#4cc3a0'],
     gemini: ['#4f7cf0', '#6b8ff5', '#3d66d6', '#8aa6f8'],
+    opencode: ['#4a4745', '#5a5858', '#3a3736', '#6e6b69'],
   };
   // Official product icons, shared by both renderers and the page UI.
   // Load once per page from the same origin so video capture stays readable.
@@ -25,6 +26,7 @@
     claude: { label: 'Claude', short: 'Cl', color: '#c96442', logo: '/assets/agents/claude.png' },
     codex: { label: 'Codex', short: 'Cx', color: '#10a37f', logo: '/assets/agents/codex.png' },
     gemini: { label: 'Gemini', short: 'G', color: '#4f7cf0', logo: '/assets/agents/gemini.png' },
+    opencode: { label: 'OpenCode', short: 'Oc', color: '#5a5858', logo: '/assets/agents/opencode.png' },
   };
   for (const badge of Object.values(AGENT_BADGES)) {
     badge.image = new Image();

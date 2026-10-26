@@ -23,6 +23,7 @@ const sessions = [
  {key:'gemini:three', id:'three', agent:'gemini',project:'gemini-project',status:'tool',activity:'Read: index.js',platform:'cli'},
  {key:'claude:done', id:'done', agent:'claude',project:'finished-project',status:'done',platform:'sdk',prompt:'/myoffice',promptKind:'command'},
  {key:'codex:sub', id:'sub', agent:'codex',project:'sub-project',status:'thinking',subagent:true,platform:'vscode'},
+ {key:'opencode:four', id:'four', agent:'opencode',project:'opencode-project',status:'typing',platform:'cli'},
 ].map(s=>({...s,lastEventAt:Date.now(),turnStartedAt:Date.now()-1000,cwd:'/demo/'+s.project}));
 async function stable(page){
  await page.waitForFunction(()=>typeof office!=='undefined' && office?.framesShown>4);
@@ -83,13 +84,13 @@ async function drawnLogos(target) {
   assert.match(await page.locator('#clock').innerText(),/\d/);
   check('no title row: controls left, counts right, version on the check button, clock in the corner');
   assert.equal(await page.locator('#showAgent').isChecked(),true);
-  assert.deepEqual([...new Set(await badges(page))].sort(),['Cl','Cx','G']);
-  assert.deepEqual(await drawnLogos(page),['claude','codex','gemini']);
-  assert.equal(await page.locator('#agentLegend img').evaluateAll(imgs=>imgs.length===3&&imgs.every(img=>img.complete&&img.naturalWidth>0)),true);
+  assert.deepEqual([...new Set(await badges(page))].sort(),['Cl','Cx','G','Oc']);
+  assert.deepEqual(await drawnLogos(page),['claude','codex','gemini','opencode']);
+  assert.equal(await page.locator('#agentLegend img').evaluateAll(imgs=>imgs.length===4&&imgs.every(img=>img.complete&&img.naturalWidth>0)),true);
   check('all official local logos load and draw in 2D and the legend');
   await openSettings(page);await page.check('#showSub');
-  assert.equal((await badges(page)).length,5);
-  check('2D badges identify all three providers and subagents without duplicate activity badges');
+  assert.equal((await badges(page)).length,6);
+  check('2D badges identify all four providers and subagents without duplicate activity badges');
   assert.equal(await page.evaluate(()=>office.label({project:'p',promptKind:'command'})),'⌨️ p');
   assert.equal(await page.evaluate(()=>office.label({project:'p',promptKind:'notification'})),'🔔 p');
   assert.equal(await page.evaluate(()=>office.sublabel({platform:'vscode'})),'VS Code');
@@ -106,7 +107,7 @@ async function drawnLogos(target) {
   assert.deepEqual(await page.locator('.card .platform').allInnerTexts(),['SDK']);
   await openSettings(page);await page.click('#platformSeg [data-v=all]');
   assert.equal(await page.locator('#activeFilter').isVisible(),false);
-  assert.equal(await page.locator('.card').count(),5);
+  assert.equal(await page.locator('.card').count(),6);
   assert.deepEqual(await page.locator('.card .kind').allInnerTexts(),['🔔 Background task','⌨️ Slash command']);
   assert.equal(await page.locator('.card .meta').count(),0);
   await page.click('#viewSeg [data-v=office]');await stable(page);
@@ -127,6 +128,7 @@ async function drawnLogos(target) {
   assert.equal(await page.evaluate(()=>vscodeLink({agent:'gemini',platform:'vscode',id:'g1'})),'');
   assert.equal(await page.evaluate(()=>resumeCmd({agent:'gemini',tool:'agy',id:'c1',cwd:'/w'})),"cd '/w' && agy --conversation 'c1'");
   assert.equal(await page.evaluate(()=>resumeCmd({agent:'gemini',id:'g1',sessionId:'s1'})),"gemini --resume 's1'");
+  assert.equal(await page.evaluate(()=>resumeCmd({agent:'opencode',id:'o1',cwd:'/w'})),"cd '/w' && opencode --session 'o1'");
   await page.keyboard.press('Escape');
   await page.click('#viewSeg [data-v=list]');
   assert.equal(await page.locator('.grid .card .open').count(),1);
@@ -139,18 +141,18 @@ async function drawnLogos(target) {
   await openSettings(page);await page.check('#showAgent');check('badge toggle hides markers and legend and persists across reload');
   await page.click('#qualSeg [data-v=high]');
   await page.waitForFunction(()=>officeKind==='high:office'&&office?.loaded&&office.framesShown>4,{},{timeout:30000});
-  assert.deepEqual([...new Set(await badges(page))].sort(),['Cl','Cx','G']);
+  assert.deepEqual([...new Set(await badges(page))].sort(),['Cl','Cx','G','Oc']);
   await screenshot(page, 'office-3d');
-  assert.deepEqual(await drawnLogos(page),['claude','codex','gemini']);
+  assert.deepEqual(await drawnLogos(page),['claude','codex','gemini','opencode']);
   check('3D renders the same official provider logos');
-  assert.deepEqual(await page.evaluate(()=>[...office.people.values()].map(p=>[p.s.platform,office.modelName(p).split('-')[0]]).filter(([pf])=>pf==='vscode'||pf==='cli').map(([pf,g])=>`${pf}:${g}`).sort()),['cli:male','cli:male','vscode:female','vscode:female']);
+  assert.deepEqual(await page.evaluate(()=>[...office.people.values()].map(p=>[p.s.platform,office.modelName(p).split('-')[0]]).filter(([pf])=>pf==='vscode'||pf==='cli').map(([pf,g])=>`${pf}:${g}`).sort()),['cli:male','cli:male','cli:male','vscode:female','vscode:female']);
   check('3D picks the model group from the platform');
   await page.click('#pipBtn');await page.waitForFunction(()=>!!popout.win);
   const pip=context.pages().find(p=>p!==page);assert.ok(pip);
   const frame=await (async()=>{for(let i=0;i<100;i++){const f=pip.frames().find(f=>f.url().includes('?pip=1'));if(f)return f;await new Promise(r=>setTimeout(r,50))}throw Error('No compact frame')})();
   await frame.waitForFunction(()=>office?.loaded&&office.framesShown>4);
   await frame.evaluate(s=>{window.__events?.close();onData({now:Date.now(),sessions:s})},sessions);
-  assert.deepEqual(await drawnLogos(frame),['claude','codex','gemini']);
+  assert.deepEqual(await drawnLogos(frame),['claude','codex','gemini','opencode']);
   assert.equal(await page.evaluate(()=>office.visible),false);
   assert.equal(await frame.evaluate(()=>state.quality),'high');
   assert.equal(await frame.locator('#pipBtn').isVisible(),false);

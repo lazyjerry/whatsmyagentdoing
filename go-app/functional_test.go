@@ -202,6 +202,7 @@ func (e cliEnv) cmd(t *testing.T, args ...string) *exec.Cmd {
 	c.Env = append(os.Environ(),
 		"HOME="+e.home, "USERPROFILE="+e.home,
 		"CLAUDE_CONFIG_DIR="+e.claude, "CODEX_HOME="+e.codex, "GEMINI_CLI_HOME="+e.gemini,
+		"XDG_DATA_HOME="+filepath.Join(e.home, ".local", "share"),
 		"WMAD_NO_UPDATE_CHECK=1", "WMAD_SRC=",
 	)
 	return c
