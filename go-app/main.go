@@ -44,7 +44,8 @@ Reads (never writes):
 %s
 Override with CLAUDE_CONFIG_DIR / CODEX_HOME / GEMINI_CLI_HOME.
 The page and its assets are built into this binary; --update needs it to sit
-in its go-app/ source folder inside a git clone (or WMAD_SRC pointing there).`, version, describeDirs())
+in its go-app/ source folder or skills/myoffice/bin/ inside a git clone (or
+WMAD_SRC pointing there).`, version, describeDirs())
 }
 
 func parseArgs(argv []string, version string) Options {

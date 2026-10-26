@@ -94,6 +94,32 @@ func TestSourceDir(t *testing.T) {
 	}
 }
 
+func TestExeSourceCandidatesCoverSkillLayout(t *testing.T) {
+	clone := t.TempDir()
+	src := filepath.Join(clone, "go-app")
+	writeFile(t, filepath.Join(src, "go.mod"), "module x\n")
+	writeFile(t, filepath.Join(src, "main.go"), "package main\n")
+	if err := os.MkdirAll(filepath.Join(clone, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// scripts/installSkill.sh puts the binary here; --update must still find go-app/.
+	exe := filepath.Join(clone, "skills", "myoffice", "bin", "whatsmyagentdoing")
+	writeFile(t, exe, "")
+	found := ""
+	for _, c := range exeSourceCandidates(exe) {
+		if abs := asSourceDir(c); abs != "" {
+			found = abs
+			break
+		}
+	}
+	if found != src {
+		t.Errorf("skill layout: got %q, want %q", found, src)
+	}
+	if got := asSourceDir(filepath.Dir(exe)); got != "" {
+		t.Errorf("bin/ itself is not a source folder: %q", got)
+	}
+}
+
 func TestUpdateRefusesOutsideSource(t *testing.T) {
 	t.Setenv("WMAD_SRC", t.TempDir())
 	chdir(t, t.TempDir())

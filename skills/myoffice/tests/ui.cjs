@@ -5,9 +5,10 @@ const { chromium } = require('playwright');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { spawn } = require('node:child_process');
 process.env.WMAD_NO_UPDATE_CHECK = '1';
-const { DemoWatcher } = require('../src/demo');
-const { createServer } = require('../src/server');
+// The page is served by the Go binary that scripts/installSkill.sh puts in bin/.
+const binary = path.join(__dirname, '..', 'bin', process.platform === 'win32' ? 'whatsmyagentdoing.exe' : 'whatsmyagentdoing');
 const screenshots = process.env.WMAD_SCREENSHOTS;
 async function screenshot(page, name) {
   if (!screenshots) return;
@@ -18,7 +19,7 @@ const checks=[];
 const check=(name)=>{checks.push(name);console.log('PASS',name)};
 const sessions = [
  {key:'claude:one', id:'one', agent:'claude',project:'claude-project',status:'thinking',platform:'vscode'},
- {key:'codex:two', id:'two', agent:'codex',project:'codex-project',status:'waiting',platform:'cli'},
+ {key:'codex:two', id:'two', agent:'codex',project:'codex-project',status:'waiting',platform:'cli',promptKind:'notification'},
  {key:'gemini:three', id:'three', agent:'gemini',project:'gemini-project',status:'tool',activity:'Read: index.js',platform:'cli'},
  {key:'claude:done', id:'done', agent:'claude',project:'finished-project',status:'done',platform:'sdk',prompt:'/myoffice',promptKind:'command'},
  {key:'codex:sub', id:'sub', agent:'codex',project:'sub-project',status:'thinking',subagent:true,platform:'vscode'},
@@ -50,10 +51,13 @@ async function drawnLogos(target) {
  });
 }
 (async()=>{
- const watcher = new DemoWatcher().start();
- const server = createServer(watcher, { demo: true, privacy: false });
- await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
- const base = `http://127.0.0.1:${server.address().port}`;
+ if (!fs.existsSync(binary)) { console.error(`missing ${binary}: run scripts/build.sh && scripts/installSkill.sh from the repo root`); process.exitCode = 1; return; }
+ const server = spawn(binary, ['--demo', '--no-open', '--port', String(40000 + Math.floor(Math.random() * 20000))], { stdio: ['ignore', 'pipe', 'inherit'] });
+ const base = await new Promise((resolve, reject) => {
+  let out = '';
+  server.stdout.on('data', d => { out += d; const m = out.match(/http:\/\/localhost:(\d+)/); if (m) resolve(`http://127.0.0.1:${m[1]}`); });
+  server.once('exit', code => reject(new Error(`dashboard exited before listening (${code})`)));
+ });
  let browser;
  const errors=[];
  try {
@@ -71,7 +75,13 @@ async function drawnLogos(target) {
   },sessions);
   context.on('page',p=>p.on('pageerror',e=>errors.push(String(e))));
   const page=await context.newPage();await page.goto(base);await stable(page);
-  assert.equal(await page.locator('h1 [data-t]').innerText(),"What's my agent doing");
+  assert.match(await page.title(),/What's my agent doing$/);
+  assert.equal(await page.locator('h1').count(),0);
+  assert.equal(await page.evaluate(()=>document.querySelector('#summary').getBoundingClientRect().left>document.querySelector('.controls').getBoundingClientRect().right),true);
+  await page.waitForSelector('#chkBtn');
+  assert.match(await page.locator('#chkBtn').getAttribute('data-ver'),/^v\d/);
+  assert.match(await page.locator('#clock').innerText(),/\d/);
+  check('no title row: controls left, counts right, version on the check button, clock in the corner');
   assert.equal(await page.locator('#showAgent').isChecked(),true);
   assert.deepEqual([...new Set(await badges(page))].sort(),['Cl','Cx','G']);
   assert.deepEqual(await drawnLogos(page),['claude','codex','gemini']);
@@ -82,6 +92,8 @@ async function drawnLogos(target) {
   check('2D badges identify all three providers and subagents without duplicate activity badges');
   assert.equal(await page.evaluate(()=>office.label({project:'p',promptKind:'command'})),'⌨️ p');
   assert.equal(await page.evaluate(()=>office.label({project:'p',promptKind:'notification'})),'🔔 p');
+  assert.equal(await page.evaluate(()=>office.sublabel({platform:'vscode'})),'VS Code');
+  assert.equal(await page.evaluate(()=>office.sublabel({})),'');
   assert.equal(await page.evaluate(()=>[...office.people.values()].every(p=>OFFICE_PLATFORM_HAIR[p.s.platform].includes(p.hair))),true);
   await openSettings(page);await page.click('#platformSeg [data-v=vscode]');
   assert.equal(await page.locator('#activeFilter').innerText(),'VS Code');
@@ -95,8 +107,16 @@ async function drawnLogos(target) {
   await openSettings(page);await page.click('#platformSeg [data-v=all]');
   assert.equal(await page.locator('#activeFilter').isVisible(),false);
   assert.equal(await page.locator('.card').count(),5);
+  assert.deepEqual(await page.locator('.card .kind').allInnerTexts(),['🔔 Background task','⌨️ Slash command']);
+  assert.equal(await page.locator('.card .meta').count(),0);
   await page.click('#viewSeg [data-v=office]');await stable(page);
-  check('platform filter narrows the list and persists, cards name the platform, 2D hair and labels follow platform and prompt kind');
+  check('platform filter narrows the list and persists, cards name the platform and prompt kind, 2D hair and labels follow platform and prompt kind');
+  await page.evaluate(()=>officeOpts.onHover(state.data.sessions.find(s=>s.key==='codex:two'),{x:40,y:40},true));
+  assert.equal(await page.locator('#tip .kind').innerText(),'🔔 Background task');
+  assert.deepEqual(await page.locator('#tip .meta dt').allInnerTexts(),['Folder','Last activity','Session']);
+  assert.deepEqual(await page.locator('#tip .meta dd').allInnerTexts(),['/demo/codex-project','now','two']);
+  await page.keyboard.press('Escape');assert.equal(await page.locator('#tip').isVisible(),false);
+  check('the hover card tags the prompt kind and lists folder, times and ids under the preview');
   await openSettings(page);await page.uncheck('#showAgent');assert.equal((await badges(page)).length,0);
   assert.equal(await page.locator('#agentLegend').isVisible(),false);
   await page.reload();await stable(page);assert.equal(await page.locator('#showAgent').isChecked(),false);
@@ -191,7 +211,7 @@ async function drawnLogos(target) {
   await page.locator('#settingsMenu > summary').press('Escape');
   assert.equal(await page.locator('#settingsPanel').isVisible(),false);
   assert.equal(await page.locator('#settingsMenu > summary').evaluate(el=>el===document.activeElement),true);
-  await openSettings(page);await page.click('h1');
+  await openSettings(page);await page.click('#summary');
   assert.equal(await page.locator('#settingsPanel').isVisible(),false);
   for (const width of [320,390,768,1280]) {
    await page.setViewportSize({width,height:800});
@@ -210,8 +230,6 @@ async function drawnLogos(target) {
   console.log('TOTAL',checks.length);
  } finally {
   await browser?.close();
-  watcher.stop();
-  server.closeAllConnections();
-  await new Promise(resolve => server.close(resolve));
+  server.kill();
  }
 })().catch(e=>{console.error(e);process.exitCode=1});

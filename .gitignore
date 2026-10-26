@@ -6,3 +6,5 @@ packs/
 docs/adr/
 go-app/whatsmyagentdoing
 go-app/whatsmyagentdoing.exe
+skills/myoffice/bin/whatsmyagentdoing
+skills/myoffice/bin/whatsmyagentdoing.exe

@@ -24,6 +24,7 @@
 │   ├── office.js         2D 等角辦公室（canvas，零相依）；Office、OfficeGrid 類別
 │   ├── office3d.js       3D 辦公室 bundle（由 web/office3d.js + three.js 建置，已 commit）
 │   ├── popout.js         子母畫面：Document PiP 或 video PiP 備援
+│   ├── sw.js             service worker：對 /api/time 校準、各分頁共用的時鐘偏移
 │   └── i18n.js           九種語言的 UI 字串、瀏覽器語言判定
 ├── web/office3d.js       3D 辦公室原始碼（Office3D extends Office）
 ├── assets/
@@ -110,6 +111,7 @@ flowchart LR
 | `public/office.js` | 2D 辦公室：工作中的 agent 坐桌（`WORKING` = thinking／tool／typing／waiting／error），最多 7 位下班者閒晃，其餘「回家」；hover／click 回呼 | `window.Office`、`window.OfficeGrid`、`OFFICE_AGENT_BADGES` |
 | `web/office3d.js` | 同一套行為以 three.js 渲染；載入 `/assets/kenney/*.glb`；場景包時改讀 manifest 與 `/scenes/<id>/models/*.glb`；WebGL 不可用時 `markReady(false)` 讓頁面退回 2D | `Office3D` |
 | `public/popout.js` | Document PiP（同源 iframe `/?pip=1&prefs=…`）或 canvas `captureStream` + video PiP 備援 | `OfficePopout` |
+| `public/sw.js` | service worker：收到 `{type: 'time'}` 時對 `/api/time` 校準（扣掉半個往返、5 分鐘內共用），回 `{offset, now}`；不攔截任何請求 | — |
 | `public/i18n.js` | `I18N` 字串表（en、zh-TW、zh-CN、ja、ko、es、fr、de、pt）、`i18nFromBrowser` | `window.I18N`、`window.i18nFromBrowser` |
 
 ## 5. 資料來源
@@ -199,12 +201,13 @@ stateDiagram-v2
 
 | 方法 | 路徑 | 用途 | 守門 |
 |---|---|---|---|
-| GET | `/`、`/office.js`、`/office3d.js`、`/i18n.js`、`/popout.js` | 靜態頁面與腳本（`no-store`） | — |
+| GET | `/`、`/office.js`、`/office3d.js`、`/i18n.js`、`/popout.js`、`/sw.js` | 靜態頁面與腳本（`no-store`） | — |
 | GET | `/assets/**` | Kenney 模型、agent 標誌（副檔名白名單、路徑穿越檢查） | — |
 | GET | `/scenes/<id>/**` | 已安裝場景包的檔案 | id 須符合 `^[a-z0-9-]+$` |
 | GET | `/events` | SSE：連線即送一次快照，之後有變更才推；每 20 秒 ping | — |
 | GET | `/api/sessions` | 一次性快照（JSON） | — |
 | GET | `/api/ping` | 身分確認 `{app: "whatsmyagentdoing"}`，CLI 用來判斷是否已在執行 | — |
+| GET | `/api/time` | 主機目前時間 `{now: <unix ms>}`（`no-store`），`sw.js` 用來校準頁面右下角的時鐘 | — |
 | GET | `/api/scenes` | 已安裝與可下載的場景清單 | — |
 | POST | `/api/scenes/install?id=` | 下載並安裝場景包 | 標頭 `x-whatsmyagentdoing: install` |
 | GET | `/api/version` | 本機版本、最新版本、是否可更新、`auto`；帶 `?check=1` 才連 GitHub 抓最新版（`AUTO_UPDATE_CHECK` 開啟時不帶也抓，30 分鐘快取） | — |

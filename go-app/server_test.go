@@ -443,3 +443,27 @@ func TestViewExposesPlatformAndPromptKind(t *testing.T) {
 		t.Errorf("unset fields must serialise as null: %s", b)
 	}
 }
+
+func TestApiTimeAndServiceWorker(t *testing.T) {
+	s := newTestServer(t, newFakeSource(), Options{}, nil, nil)
+	before := time.Now().UnixMilli()
+	rec := do(s, "GET", "/api/time", nil)
+	var got struct {
+		Now int64 `json:"now"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != 200 {
+		t.Fatalf("time: %d %v %s", rec.Code, err, rec.Body.String())
+	}
+	if got.Now < before || got.Now > time.Now().UnixMilli() {
+		t.Errorf("time: %d is not between %d and now", got.Now, before)
+	}
+	if rec.Header().Get("Cache-Control") != "no-store" {
+		t.Errorf("time: Cache-Control %q, want no-store", rec.Header().Get("Cache-Control"))
+	}
+
+	// The worker that keeps the page's clock in step with /api/time.
+	rec = do(s, "GET", "/sw.js", nil)
+	if rec.Code != 200 || !strings.Contains(rec.Header().Get("Content-Type"), "javascript") || !strings.Contains(rec.Body.String(), "/api/time") {
+		t.Errorf("sw.js: %d %s", rec.Code, rec.Header().Get("Content-Type"))
+	}
+}

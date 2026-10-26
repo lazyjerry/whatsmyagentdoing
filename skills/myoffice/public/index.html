@@ -51,14 +51,12 @@
     padding: 24px 16px 64px;
   }
   .wrap { max-width: 1180px; margin: 0 auto; }
-  header { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 24px; margin-bottom: 16px; }
-  h1 { font-size: 19px; margin: 0; letter-spacing: -.01em; }
-  h1 span { color: var(--ink); font-weight: 600; }
+  header { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin-bottom: 16px; }
   .summary { display: flex; gap: 18px; flex-wrap: wrap; margin-left: auto; }
   .chip { display: inline-flex; align-items: center; gap: 6px; padding: 0; font-size: 12px; color: var(--muted); }
   .chip b { color: var(--ink); font-weight: 600; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
-  .controls { position: relative; width: 100%; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding-top: 14px; border-top: 1px solid var(--line); }
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   .seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
   .seg button { border: 0; background: none; color: var(--muted); padding: 5px 12px; border-radius: 5px; font: inherit; font-size: 12.5px; cursor: pointer; }
   .seg button:hover:not(.on) { color: var(--ink); background: var(--bg); }
@@ -70,7 +68,6 @@
   .btn { border: 1px solid var(--line); background: var(--panel); color: var(--muted); padding: 5px 11px; border-radius: 8px; font: inherit; font-size: 12.5px; cursor: pointer; }
   .btn:hover { color: var(--ink); border-color: var(--faint); }
   button:focus-visible, select:focus-visible, summary:focus-visible, input:focus-visible { outline: 2px solid var(--tool); outline-offset: 3px; }
-  .toolbar-space { flex: 1; }
   .controls > .btn, .settings > summary { min-height: 36px; display: inline-flex; align-items: center; white-space: nowrap; }
   .settings > summary { list-style: none; gap: 7px; color: var(--ink); }
   .settings > summary::-webkit-details-marker { display: none; }
@@ -98,7 +95,7 @@
   @media (max-width: 640px) {
     header { gap: 14px; }
     .summary { margin-left: 0; width: 100%; gap: 18px; }
-    .controls { gap: 6px; padding-top: 12px; }
+    .controls { gap: 6px; }
     .seg button { padding-inline: 9px; }
     .controls > .btn, .settings > summary { padding-inline: 9px; }
   }
@@ -122,7 +119,13 @@
   .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .agent { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; letter-spacing: .02em; color: var(--muted); flex: none; }
   .agent-logo { width: 20px; height: 20px; object-fit: contain; padding: 1px; flex: none; }
-  .platform { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; flex: none; }
+  .platform, .kind { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; flex: none; align-self: flex-start; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  /* hover card only: the fields the compact card leaves out */
+  .meta { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; font-size: 11.5px; color: var(--muted); }
+  .meta dt { color: var(--faint); white-space: nowrap; }
+  .meta dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  .meta .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
   #platformSeg { display: flex; margin-top: 8px; }
   #platformSeg button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
   #platformSeg .hair { width: 10px; height: 10px; border-radius: 50%; background: var(--hair, transparent); flex: none; }
@@ -182,7 +185,8 @@
   .tip { position: fixed; z-index: 10; width: 320px; max-width: calc(100vw - 24px); pointer-events: none; display: none; }
   .tip.pinned { pointer-events: auto; }
   .tip .card { box-shadow: 0 8px 30px rgba(0,0,0,.18); }
-  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; color: var(--muted); font-size: 12px; }
+  .legends { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 32px; margin-top: 10px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: 12px; }
   .legend span { display: inline-flex; align-items: center; gap: 5px; }
 
   .pip-preview { margin-bottom: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
@@ -192,10 +196,15 @@
   .newver { border: 1px solid var(--tool); background: color-mix(in srgb, var(--tool) 18%, var(--panel)); color: var(--ink); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 12.5px; cursor: pointer; animation: glowv 2.4s ease-in-out infinite; }
   .newver:disabled { opacity: .7; cursor: default; animation: none; }
   @keyframes glowv { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--tool) 25%, transparent); } }
-  .ver { position: fixed; right: 14px; bottom: 12px; display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--faint); z-index: 5; }
+  .ver { position: fixed; right: 14px; bottom: 12px; display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--faint); z-index: 5; }
   .ver button { border: 1px solid var(--tool); background: color-mix(in srgb, var(--tool) 14%, var(--panel)); color: var(--ink); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 12px; cursor: pointer; }
   .ver button:disabled { opacity: .6; cursor: default; }
-  .ver code { background: var(--panel); border: 1px solid var(--line); padding: 2px 6px; border-radius: 6px; }
+  #ver { display: contents; }
+  /* the running version shows above the button on hover or keyboard focus */
+  .ver [data-ver] { position: relative; }
+  .ver [data-ver]::after { content: attr(data-ver); position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; box-shadow: var(--shadow); opacity: 0; pointer-events: none; transition: opacity .15s; }
+  .ver [data-ver]:hover::after, .ver [data-ver]:focus-visible::after { opacity: 1; }
+  .ver time { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .empty { text-align: center; color: var(--muted); padding: 60px 16px; border: 1px dashed var(--line); border-radius: 12px; }
   .empty code { background: var(--panel); padding: 2px 6px; border-radius: 4px; }
   .conn { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); background: var(--error); color: #fff; padding: 6px 14px; border-radius: 999px; font-size: 12.5px; display: none; }
@@ -205,7 +214,7 @@
   body.pip { padding: 8px; }
   body.pip .wrap { height: calc(100dvh - 16px); display: flex; flex-direction: column; }
   body.pip header { gap: 6px; margin-bottom: 8px; flex: none; }
-  body.pip h1, body.pip .newver, body.pip #legend, body.pip .ver,
+  body.pip .newver, body.pip #legend, body.pip .ver,
   body.pip .controls > :not(#viewSeg):not(#qualSeg) { display: none !important; }
   body.pip .controls { width: auto; padding: 0; border: 0; }
   body.pip .chip { padding: 2px 6px; font-size: 11px; }
@@ -222,9 +231,6 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>👀 <span data-t="title"></span></h1>
-    <div class="summary" id="summary"></div>
-    <button class="newver" id="newVer" hidden></button>
     <div class="controls">
       <div class="seg" id="viewSeg">
         <button data-v="office" data-t="office"></button>
@@ -234,7 +240,6 @@
         <button data-v="mid" data-t="qMid"></button>
         <button data-v="high" data-t="qHigh"></button>
       </div>
-      <span class="toolbar-space" aria-hidden="true"></span>
       <button class="btn" id="pipBtn" hidden></button>
       <details class="settings" id="settingsMenu">
         <summary class="btn" aria-controls="settingsPanel"><span data-t="settings"></span><span class="filter-active" id="activeFilter" hidden></span></summary>
@@ -274,6 +279,8 @@
         </div>
       </details>
     </div>
+    <button class="newver" id="newVer" hidden></button>
+    <div class="summary" id="summary"></div>
   </header>
   <p class="pip-error" id="pipError" role="alert" hidden></p>
   <div class="pip-preview" id="pipPreview" hidden>
@@ -284,14 +291,16 @@
   </div>
   <div id="officeWrap">
     <div class="office loading" id="office"><div class="office-loader"><div class="spin"></div><span id="loaderText"></span></div></div>
-    <div class="legend" id="legend"></div>
-    <div class="legend" id="agentLegend"></div>
+    <div class="legends">
+      <div class="legend" id="legend"></div>
+      <div class="legend" id="agentLegend"></div>
+    </div>
   </div>
   <main id="main"></main>
 </div>
 <div class="conn" id="conn" data-t="disconnected"></div>
 <div class="tip" id="tip"></div>
-<div class="ver" id="ver"></div>
+<div class="ver"><span id="ver"></span><time id="clock"></time></div>
 <script src="/i18n.js"></script>
 <script src="/office.js"></script>
 <script src="/popout.js"></script>
@@ -302,6 +311,7 @@
 let L = I18N.en;
 let langCode = 'en';
 let rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto', style: 'short' });
+let clockFmt = new Intl.DateTimeFormat('en', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 function chooseLang(serverGuess) {
   const pick = store.get('lang', 'auto');
   if (pick !== 'auto' && I18N[pick]) return pick;
@@ -315,6 +325,8 @@ function applyLang(code) {
   L = I18N[code];
   document.documentElement.lang = L.html;
   rtf = new Intl.RelativeTimeFormat(L.html, { numeric: 'auto', style: 'short' });
+  clockFmt = new Intl.DateTimeFormat(L.html, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  if (typeof drawClock === 'function') drawClock();
   document.querySelectorAll('[data-t]').forEach((el) => (el.textContent = L[el.dataset.t]));
   const legend = document.getElementById('legend');
   if (legend) legend.innerHTML = ['thinking', 'tool', 'typing', 'waiting', 'done', 'error']
@@ -381,6 +393,7 @@ const AGENT_NAME = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' };
 // Where the session runs (from the server) and what started its turn.
 const PLATFORM_NAME = { vscode: 'VS Code', cli: 'CLI', sdk: 'SDK', desktop: 'Desktop' };
 const PROMPT_ICON = { command: '⌨️', notification: '🔔' };
+const PROMPT_KIND_KEY = { command: 'kindCommand', notification: 'kindNotification' };
 function onPlatform(s) {
   if (state.platform === 'all') return true;
   if (state.platform === 'other') return s.platform !== 'vscode' && s.platform !== 'cli';
@@ -436,7 +449,26 @@ function agentLogo(agent) {
   return badge ? `<img class="agent-logo" src="${badge.logo}" alt="" aria-hidden="true">` : '';
 }
 
-function card(s, now) {
+// The platform and what started the turn, as small tags under the title row.
+function tags(s) {
+  const platform = s.platform ? `<span class="platform">${esc(PLATFORM_NAME[s.platform] || s.platform)}</span>` : '';
+  const kind = PROMPT_ICON[s.promptKind] ? `<span class="kind">${PROMPT_ICON[s.promptKind]} ${esc(L[PROMPT_KIND_KEY[s.promptKind]])}</span>` : '';
+  return platform || kind ? `<div class="tags">${platform}${kind}</div>` : '';
+}
+
+// Everything the server sends that the compact card has no room for; shown
+// only in the office hover card (`detail`).
+function meta(s, now) {
+  const rows = [];
+  if (s.cwd) rows.push([L.cwd, s.cwd, 'mono']);
+  if (s.startedAt) rows.push([L.started, ago(s.startedAt, now)]);
+  if (s.lastEventAt) rows.push([L.lastEvent, ago(s.lastEventAt, now)]);
+  rows.push([L.sessionId, s.sessionId || s.id, 'mono']);
+  if (s.parentId) rows.push([L.parentId, s.parentId, 'mono']);
+  return `<dl class="meta">${rows.map(([k, v, c]) => `<dt>${esc(k)}</dt><dd${c ? ` class="${c}"` : ''}>${esc(v)}</dd>`).join('')}</dl>`;
+}
+
+function card(s, now, detail = false) {
   const project = s.project || (s.cwd ? s.cwd : '—');
   const title = s.title && s.title !== project ? `<div class="title" title="${esc(s.title)}">${esc(s.title)}</div>` : '';
   const act = s.activity ? `<span class="act" title="${esc(s.activity)}">${esc(s.activity)}</span>` : '';
@@ -449,13 +481,14 @@ function card(s, now) {
   <div class="card${s.subagent ? ' sub' : ''}${state.flash.has(s.key) ? ' flash' : ''}" data-s="${s.status}" data-key="${esc(s.key)}">
     <div class="top">
       <span class="agent ${esc(s.agent)}">${agentLogo(s.agent)}${esc(AGENT_NAME[s.agent] || s.agent)}</span>
-      ${s.platform ? `<span class="platform">${esc(PLATFORM_NAME[s.platform] || s.platform)}</span>` : ''}
       <span class="project" title="${esc(s.cwd)}">${esc(project)}</span>
       <span class="time" data-time="${esc(s.key)}">${esc(timeLabel(s, now))}</span>
     </div>
+    ${tags(s)}
     ${title}
     <div class="status"><span class="ind"><i></i><i></i><i></i></span><span class="lbl">${esc(L[s.status] || s.status)}</span>${act}</div>
     ${err}${q}${r}
+    ${detail ? meta(s, now) : ''}
     <div class="foot"><span class="model">${esc((s.model || '') + sub)}</span><button class="copy" data-copy="${esc(resumeCmd(s))}">${L.copy}</button></div>
   </div>`;
 }
@@ -533,6 +566,7 @@ function tickTimes() {
 
 function onData(data) {
   state.skew = Date.now() - data.now;
+  if (!clockFromWorker) clockOffset = -state.skew;
   const first = state.prev.size === 0;
   state.flash.clear();
   for (const s of data.sessions) {
@@ -640,7 +674,7 @@ function refreshTip() {
   if (!tipKey) return;
   const s = state.data.sessions.find((x) => x.key === tipKey);
   if (!s) return hideTip();
-  tip.innerHTML = card(s, Date.now() - state.skew);
+  tip.innerHTML = card(s, Date.now() - state.skew, true);
   placeTip();
 }
 function hideTip() { tipKey = null; tipPinned = false; tip.style.display = 'none'; tip.classList.remove('pinned'); }
@@ -648,6 +682,7 @@ const officeOpts = {
   compact: PIP,
   onFrame: (renderer) => popout?.drawPreview(renderer),
   label: (s) => (PROMPT_ICON[s.promptKind] ? PROMPT_ICON[s.promptKind] + ' ' : '') + (s.project || AGENT_NAME[s.agent] || s.agent),
+  sublabel: (s) => (s.platform ? PLATFORM_NAME[s.platform] || s.platform : ''),
   onHover(s, at, click) {
     if (click) {
       if (!s) return hideTip();
@@ -760,15 +795,17 @@ const verEl = document.getElementById('ver');
 let verInfo = null;
 function renderVersion() {
   if (!verInfo) return;
-  let html = `<span>v${esc(verInfo.version)}</span>`;
+  // the running version is the hover tooltip (data-ver) of whatever is shown
+  const ver = `v${esc(verInfo.version)}`;
+  let html;
   if (verInfo.updateAvailable) {
     html = verInfo.canUpdate
-      ? `<button id="updBtn">⬆ ${esc(L.update)} v${esc(verInfo.latest)}</button>` + html
-      : `<span>${esc(L.gitPull)} → v${esc(verInfo.latest)}</span>` + html;
+      ? `<button id="updBtn" data-ver="${ver}">⬆ ${esc(L.update)} v${esc(verInfo.latest)}</button>`
+      : `<span data-ver="${ver}">${esc(L.gitPull)} → v${esc(verInfo.latest)}</span>`;
   } else {
-    html = `<button id="chkBtn">${esc(L.checkUpdate)}</button>` + html;
+    html = `<button id="chkBtn" data-ver="${ver}" aria-describedby="verNote">${esc(L.checkUpdate)}</button>`;
   }
-  verEl.innerHTML = html;
+  verEl.innerHTML = html + `<span id="verNote" hidden>${ver}</span>`;
   // a second, more visible way in, next to the title
   const top = document.getElementById('newVer');
   top.hidden = !(verInfo.updateAvailable && verInfo.canUpdate);
@@ -809,6 +846,40 @@ function loadVersion() {
   }).catch(() => {});
 }
 loadVersion();
+
+// ---- clock (bottom-right corner, next to the version button)
+// Shows the host's time, not this device's: sw.js keeps one offset against
+// /api/time (round trip halved) for every window and tab, so a device clock
+// that is off, or a tab the browser throttled in the background, still shows
+// what the dashboard's host says. Every tick recomputes from the absolute
+// clock, so delayed timers never accumulate drift. Until the worker answers
+// (or where there is none) the SSE snapshot's skew is used.
+const clockEl = document.getElementById('clock');
+let clockOffset = 0;
+let clockFromWorker = false;
+function drawClock() {
+  const t = new Date(Date.now() + clockOffset);
+  clockEl.dateTime = t.toISOString();
+  clockEl.textContent = clockFmt.format(t);
+}
+function startClock() {
+  if (PIP) return;
+  const tick = () => { drawClock(); setTimeout(tick, 1000 - ((Date.now() + clockOffset) % 1000)); };
+  tick();
+  let ask = null;
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { drawClock(); ask?.(); } });
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data?.type !== 'time') return;
+    clockOffset = e.data.offset; clockFromWorker = true; drawClock();
+  });
+  navigator.serviceWorker.register('/sw.js').then(() => navigator.serviceWorker.ready).then((reg) => {
+    ask = () => reg.active?.postMessage({ type: 'time' });
+    ask();
+    setInterval(ask, 60 * 1000);
+  }).catch(() => {});
+}
+startClock();
 
 const langSel = document.getElementById('langSel');
 langSel.innerHTML = '<option value="auto"></option>' +

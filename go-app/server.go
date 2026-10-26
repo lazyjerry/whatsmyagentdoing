@@ -27,6 +27,7 @@ var staticFiles = map[string][2]string{
 	"/office3d.js": {"office3d.js", "text/javascript; charset=utf-8"},
 	"/i18n.js":     {"i18n.js", "text/javascript; charset=utf-8"},
 	"/popout.js":   {"popout.js", "text/javascript; charset=utf-8"},
+	"/sw.js":       {"sw.js", "text/javascript; charset=utf-8"},
 }
 
 var mimeTypes = map[string]string{
@@ -474,6 +475,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	case p == "/api/ping":
 		writeJSON(w, 200, map[string]any{"app": "whatsmyagentdoing"}, false)
+
+	case p == "/api/time":
+		// This host's clock; the page's corner clock syncs to it through sw.js.
+		writeJSON(w, 200, map[string]any{"now": time.Now().UnixMilli()}, true)
 
 	case p == "/events":
 		s.serveEvents(w, r)

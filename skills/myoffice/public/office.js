@@ -192,10 +192,11 @@
   // ---------------------------------------------------------------- office
 
   class Office {
-    constructor(root, { onHover, label, onFrame, showAgent = true, compact = false } = {}) {
+    constructor(root, { onHover, label, sublabel, onFrame, showAgent = true, compact = false } = {}) {
       this.root = root;
       this.onHover = onHover || (() => {});
       this.label = label || ((s) => s.project || s.agent);
+      this.sublabel = sublabel || (() => '');
       this.onFrame = onFrame;
       this.showAgent = showAgent;
       this.compact = compact;
@@ -1334,6 +1335,33 @@
         c.globalAlpha = 1;
         return yy - 8;
       };
+      // Name tag: the label, plus the platform on a smaller second line when
+      // the session says where it runs. Grows upward so the bottom edge stays
+      // where the one-line pill would sit.
+      const tag = (text, sub, yy, alpha) => {
+        if (!sub) return pill(text, pal.text, pal.tagBg, yy, alpha, true);
+        c.globalAlpha = alpha;
+        let tx = text;
+        while (c.measureText(tx).width > 118 && tx.length > 2) tx = tx.slice(0, -2) + '…';
+        const extra = badge ? 26 : 0;
+        const w1 = c.measureText(tx).width;
+        c.font = font(500, 8.5);
+        const w2 = c.measureText(sub).width;
+        c.font = font(600, 10);
+        const w = Math.max(w1, w2) + 12 + extra;
+        const height = 27, bottom = yy + 8;
+        this.roundRect(x - w / 2, bottom - height, w, height, 8, pal.tagBg);
+        c.fillStyle = pal.text;
+        c.fillText(tx, x + extra / 2, bottom - height + 9.5);
+        c.font = font(500, 8.5);
+        c.globalAlpha = alpha * 0.75;
+        c.fillText(sub, x + extra / 2, bottom - 7);
+        c.font = font(600, 10);
+        c.globalAlpha = alpha;
+        if (extra) this.agentBadge(badge, x - w / 2 + 13, bottom - height / 2);
+        c.globalAlpha = 1;
+        return bottom - height;
+      };
 
       let top = y;
       if (p.mode === 'work' && !p.path.length) {
@@ -1404,7 +1432,7 @@
 
       const hover = this.hoverKey === p.key;
       if (!s.subagent || hover) {
-        pill(this.label(s), pal.text, pal.tagBg, top - 11, p.mode === 'work' || hover ? 1 : 0.7, true);
+        tag(this.label(s), this.sublabel(s), top - 11, p.mode === 'work' || hover ? 1 : 0.7);
       } else if (badge) {
         this.agentBadge(badge, x, top - 11);
       }

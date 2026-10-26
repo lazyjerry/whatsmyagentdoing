@@ -10,7 +10,8 @@ package main
 // the sources and rebuilding: `git pull --ff-only` in the clone that holds
 // go-app/, `scripts/sync-static.sh`, then `go build` over this executable.
 // That only works when the executable still sits in its go-app/ source
-// folder (see sourceDir); elsewhere canUpdate is false and the page hides
+// folder, or in <clone>/skills/myoffice/bin/ where scripts/installSkill.sh
+// puts it (see sourceDir); elsewhere canUpdate is false and the page hides
 // the Update button.
 
 import (
@@ -157,7 +158,7 @@ func (u *Updater) Info() VersionInfo {
 func (u *Updater) Update() (string, error) {
 	src := sourceDir()
 	if src == "" {
-		return "", errors.New("this binary is not inside its go-app/ source folder; rebuild from a git clone to get updates (or set WMAD_SRC)")
+		return "", errors.New("this binary is not inside its go-app/ source folder or a clone's skills/myoffice/bin/; rebuild from a git clone with scripts/build.sh && scripts/installSkill.sh (or set WMAD_SRC)")
 	}
 	clone := filepath.Dir(src)
 	exe, err := os.Executable()

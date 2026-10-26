@@ -2,18 +2,13 @@
   "name": "whatsmyagentdoing",
   "version": "0.3.0",
   "description": "See what every Claude Code and Codex agent on your machine is doing, live in your browser.",
-  "bin": {
-    "whatsmyagentdoing": "bin/cli.js"
-  },
   "files": [
-    "bin",
-    "src",
     "public",
     "assets",
     "SKILL.md"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "keywords": [
     "claude",
@@ -40,8 +35,6 @@
   },
   "scripts": {
     "build": "esbuild web/office3d.js --bundle --format=esm --minify --target=es2020 --outfile=public/office3d.js --legal-comments=eof",
-    "start": "node bin/cli.js",
-    "test": "node --test tests/parsers.test.cjs",
     "test:ui": "node tests/ui.cjs"
   }
 }

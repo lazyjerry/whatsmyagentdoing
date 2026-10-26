@@ -2,6 +2,8 @@
 
 依 README 與原始碼整理的系統結構、use case（使用案例）與 UML 圖。圖以 Mermaid 撰寫，GitHub 與 VS Code 的 Markdown 預覽可直接渲染。
 
+> 這份分析的是 0.3.0 的 Node 版實作（`bin/cli.js` 加 `src/`）。Node 版已從 skill 移除，skill 現在呼叫 Go 執行檔；現行實作的分析見 [go-app/jerry-report/](../go-app/jerry-report/)。本目錄留作歷史紀錄。
+
 - 版本依據：package.json `0.3.0`
 - 分析範圍：`bin/`、`src/`、`public/`、`web/`、`scripts/`、`tests/`、`scenes.json`、`SKILL.md`、README
 

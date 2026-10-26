@@ -1,6 +1,6 @@
 # 👀 whatsmyagentdoing
 
-**即時看到你機器上每一個 Claude Code、Codex 與 Gemini CLI agent 正在做什麼——在一間小小的辦公室裡。** 有兩種用法：裝成 skill 輸入 `/myoffice`（Node.js），或建一個單檔執行的 Go 版直接跑。
+**即時看到你機器上每一個 Claude Code、Codex 與 Gemini CLI agent 正在做什麼——在一間小小的辦公室裡。** 裝成 skill 輸入 `/myoffice`，或直接執行建好的單檔 Go 執行檔；兩者跑的是同一支 Go 程式。
 
 ![3D 辦公室：agent 坐在座位上工作，下班的在四處閒晃](docs/office-3d.gif)
 
@@ -14,10 +14,11 @@
 
 | 路徑 | 內容 |
 |---|---|
-| [`skills/myoffice/`](skills/myoffice/) | skill 本體（Node.js 18+）：`SKILL.md`、`bin/cli.js`、`src/`、網頁與 3D 模型。可被 ai-global 安裝。 |
-| [`go-app/`](go-app/) | 獨立的 Go 版：功能與 skill 一致，網頁與模型內嵌在執行檔裡，不依賴本倉庫其他目錄。 |
+| [`skills/myoffice/`](skills/myoffice/) | skill 本體：`SKILL.md`、網頁與 3D 模型的真源、建好後放進 `bin/` 的 Go 執行檔（不進版控）。可被 ai-global 安裝。 |
+| [`go-app/`](go-app/) | Go 後端原始碼：skill 呼叫的執行檔從這裡建出，網頁與模型內嵌在執行檔裡，不依賴本倉庫其他目錄。 |
+| [`scripts/`](scripts/) | `build.sh` 重建執行檔、`installSkill.sh` 把它複製進 skill、`start.sh` 兩者做完再重啟儀表板。 |
 | [`docs/`](docs/) | 示範動畫、資安檢視報告、施工筆記。 |
-| [`jerry-report/`](jerry-report/) | 原本 skill 的系統分析：結構、16 個 use case 與 UML。 |
+| [`jerry-report/`](jerry-report/) | 原 Node 版 skill 的系統分析（歷史文件）；現行 Go 版的在 [`go-app/jerry-report/`](go-app/jerry-report/)。 |
 
 ## 安裝 skill
 
@@ -27,7 +28,7 @@
 ai-global add-skill lazyjerry/whatsmyagentdoing
 ```
 
-它會找到 `skills/myoffice/`，裝進 `~/.ai-global/v-skills/` 並以 symlink 同步給 Claude Code、Codex 等工具；之後用 `ai-global update-skills` 更新，`ai-global remove-skill lazyjerry/whatsmyagentdoing` 移除。
+它會找到 `skills/myoffice/`，裝進 `~/.ai-global/v-skills/` 並以 symlink 同步給 Claude Code、Codex 等工具；之後用 `ai-global update-skills` 更新，`ai-global remove-skill lazyjerry/whatsmyagentdoing` 移除。第一次輸入 `/myoffice` 時，agent 會檢查 Go、clone 本倉庫建出執行檔並放進 skill（沒有 Go 會先請你安裝）。
 
 **或自己動手：** skill 不在倉庫根目錄，所以 clone 一份再把 `skills/myoffice/` 連進各工具的 skills 目錄。
 
@@ -38,15 +39,19 @@ git clone --depth 1 https://github.com/lazyjerry/whatsmyagentdoing ~/.whatsmyage
 ln -s ~/.whatsmyagentdoing/src/skills/myoffice ~/.claude/skills/myoffice
 # Codex
 ln -s ~/.whatsmyagentdoing/src/skills/myoffice ~/.codex/skills/myoffice
+
+# 建執行檔並放進 skill（需要 Go 1.22 以上；跳過也行，第一次 /myoffice 時 agent 會補做）
+~/.whatsmyagentdoing/src/scripts/build.sh
+~/.whatsmyagentdoing/src/scripts/installSkill.sh
 ```
 
 **或請你的 agent 幫你裝。** 把這段貼進 Claude Code 或 Codex：
 
-> Install the myoffice skill from https://github.com/lazyjerry/whatsmyagentdoing: clone it with `git clone --depth 1` into `~/.whatsmyagentdoing/src`, then symlink `~/.whatsmyagentdoing/src/skills/myoffice` to `~/.claude/skills/myoffice` (for Codex: `~/.codex/skills/myoffice`), check that `node --version` is 18 or newer, then tell me to start a new session and type /myoffice.
+> Install the myoffice skill from https://github.com/lazyjerry/whatsmyagentdoing: clone it with `git clone --depth 1` into `~/.whatsmyagentdoing/src`, then symlink `~/.whatsmyagentdoing/src/skills/myoffice` to `~/.claude/skills/myoffice` (for Codex: `~/.codex/skills/myoffice`), check that `go version` is 1.22 or newer (if Go is missing, tell me how to install it and stop), run `~/.whatsmyagentdoing/src/scripts/build.sh` and `~/.whatsmyagentdoing/src/scripts/installSkill.sh`, then tell me to start a new session and type /myoffice.
 
-接著輸入 **`/myoffice`**（或直接問「我的 agent 在做什麼？」）。辦公室會在瀏覽器裡開啟。要更新就跑 `git -C ~/.whatsmyagentdoing/src pull`（ai-global 安裝的則用 `ai-global update-skills`），或在頁面上按「檢查更新」。
+接著輸入 **`/myoffice`**（或直接問「我的 agent 在做什麼？」）。辦公室會在瀏覽器裡開啟。要更新就說 `/myoffice update`（會 `git pull` 並重新 `go build`），或在頁面上按「檢查更新」；ai-global 安裝的用 `ai-global update-skills`，再輸入一次 `/myoffice` 重建執行檔。
 
-需要 Node.js 18 以上。不必 `npm install`——clone 下來就能跑。不想用 skill？從 clone 目錄執行 `node skills/myoffice/bin/cli.js` 也行。
+建置需要 Go 1.22 以上，執行時不需要 Node.js。不想用 skill？直接執行 `go-app/whatsmyagentdoing` 也行。
 
 ## Go 版啟動
 
@@ -55,12 +60,13 @@ Go 版把網頁、3D 模型、場景目錄與版本號都用 `go:embed` 包進�
 > ### 建置
 >
 > ```bash
-> cd <clone>/go-app
-> scripts/sync-static.sh          # 把 skills/myoffice/ 的 public/、assets/、scenes.json、版本號同步到 static/
-> go build -o whatsmyagentdoing .
+> cd <clone>
+> scripts/build.sh            # 同步 static/ 再 go build，產物在 go-app/whatsmyagentdoing
+> scripts/installSkill.sh     # 複製到 skills/myoffice/bin/，SKILL.md 呼叫的就是這份
+> scripts/start.sh            # 上面兩步做完再（重新）啟動儀表板；執行檔內嵌前端，改完一定要重啟才看得到
 > ```
 >
-> `static/` 是內嵌副本，真源在 `skills/myoffice/`；前端有改動就重跑同步再建置。`scripts/sync-static.sh --check` 只比對不改寫，有漂移以非零結束。
+> `scripts/build.sh` 找不到 `go` 會印出安裝方式並以非零結束。`static/` 是內嵌副本，真源在 `skills/myoffice/`；前端有改動就重跑建置。
 >
 > ### 啟動
 >
@@ -77,7 +83,7 @@ Go 版把網頁、3D 模型、場景目錄與版本號都用 `go:embed` 包進�
 > ./whatsmyagentdoing
 > ```
 
-旗標與 skill 版完全相同（見下方「選項」）。要讓 agent 改用 Go 版，把 `SKILL.md` 裡的 `node "<base directory>/bin/cli.js"` 換成建好的執行檔路徑即可。
+skill 呼叫的就是這個執行檔（`scripts/installSkill.sh` 複製到 `skills/myoffice/bin/`），旗標完全相同（見下方「選項」）。
 
 ## 它長什麼樣
 
@@ -114,7 +120,7 @@ Go 版把網頁、3D 模型、場景目錄與版本號都用 `go:embed` 包進�
 
 ## 選項
 
-skill 版（`node skills/myoffice/bin/cli.js`）與 Go 版（`go-app/whatsmyagentdoing`）旗標相同：
+skill 的 `skills/myoffice/bin/whatsmyagentdoing` 與直接建出的 `go-app/whatsmyagentdoing` 是同一支程式：
 
 ```
 -p, --port <n>    連接埠（預設 4545；被佔用時取下一個可用的）
@@ -131,7 +137,7 @@ skill 版（`node skills/myoffice/bin/cli.js`）與 Go 版（`go-app/whatsmyagen
 
 執行中再跑一次只會重新開啟分頁。
 
-**更新：** 頁面角落顯示版本號與 **檢查更新** 按鈕；只有按下時才會抓一次本 repo main 分支的 `skills/myoffice/package.json`，不會自動檢查，有新版時改顯示 **Update** 按鈕。要改成自動（頁面載入與每半小時、CLI 啟動時都檢查），把 `skills/myoffice/src/config.js`（Go 版是 `go-app/config.go`）的 `AUTO_UPDATE_CHECK` 改成 `true`；設定 `WMAD_NO_UPDATE_CHECK=1` 則兩種模式都不檢查。按下按鈕——或執行 `--update`、或說 `/myoffice update`——skill 版會在 clone 執行 `git pull` 並重啟；Go 版會接著重新同步 `static/` 並重新 `go build`，只在執行檔還放在 clone 的 `go-app/` 裡時可用。
+**更新：** 頁面右下角有 **檢查更新** 按鈕，滑鼠移上去顯示目前版本號，旁邊的時鐘是主機目前時間（由 `sw.js` 這個 service worker 對 `/api/time` 校準，所有分頁共用同一個時間差）；只有按下按鈕時才會抓一次本 repo main 分支的 `skills/myoffice/package.json`，不會自動檢查，有新版時改顯示 **Update** 按鈕。要改成自動（頁面載入與每半小時、CLI 啟動時都檢查），把 `go-app/config.go` 的 `AutoUpdateCheck` 改成 `true`；設定 `WMAD_NO_UPDATE_CHECK=1` 則兩種模式都不檢查。按下按鈕——或執行 `--update`、或說 `/myoffice update`——會在 clone 執行 `git pull`、重新同步 `static/` 並重新 `go build`（需要 Go），只在執行檔還放在 clone 的 `go-app/` 或 `skills/myoffice/bin/` 裡時可用。
 
 ## 運作原理
 
@@ -143,7 +149,7 @@ skill 版（`node skills/myoffice/bin/cli.js`）與 Go 版（`go-app/whatsmyagen
 
 `whatsmyagentdoing` 以唯讀方式 tail 這些檔案，把最新事件轉成狀態，再透過 Server-Sent Events 推到頁面。檔案位置不同的話，設定 `CLAUDE_CONFIG_DIR` / `CODEX_HOME` / `GEMINI_CLI_HOME` 即可。
 
-**隱私：** 沒有任何東西離開你的機器。伺服器只綁定 `127.0.0.1`，並拒絕非 localhost 的請求。沒有執行期依賴——五分鐘就能讀完 `skills/myoffice/src/`，Go 版也只用標準函式庫。（`skills/myoffice/web/office3d.js` 是 3D 原始碼；`npm run build` 會把它與 three.js 打包成 `public/office3d.js`。）
+**隱私：** 沒有任何東西離開你的機器。伺服器只綁定 `127.0.0.1`，並拒絕非 localhost 的請求。沒有執行期依賴——後端只用 Go 標準函式庫（`go-app/`），沒有第三方套件。（`skills/myoffice/web/office3d.js` 是 3D 原始碼；`npm run build` 會把它與 three.js 打包成 `public/office3d.js`。）
 
 ## 限制
 
@@ -154,7 +160,7 @@ skill 版（`node skills/myoffice/bin/cli.js`）與 Go 版（`go-app/whatsmyagen
 
 ## 開發檢查
 
-skill 版的開發檢查在 `skills/myoffice/` 內執行，需要 Node.js 20 以上（dashboard 本身仍只需 Node.js 18 以上）。先 `npm install`，再以 `npm run build` 重建已提交的 3D bundle；重建後記得跑 `go-app/scripts/sync-static.sh` 讓 Go 版的內嵌副本跟上。若有安裝 Google Chrome，`npm run test:ui` 會對臨時本機伺服器與虛構 session 執行瀏覽器回歸檢查。用 `WMAD_HEADED=1 npm run test:ui` 可看到測試視窗，或設定 `WMAD_SCREENSHOTS` 為輸出資料夾以保存截圖。這些檢查使用 Chrome；Firefox 與 Safari 的原生影片控制項仍需手動測試。
+前端的開發檢查在 `skills/myoffice/` 內執行，需要 Node.js 20 以上（只有開發需要，dashboard 本身不需要 Node.js）。先 `npm install`，再以 `npm run build` 重建已提交的 3D bundle；重建後跑 `scripts/build.sh && scripts/installSkill.sh` 讓執行檔的內嵌副本跟上。若有安裝 Google Chrome，`npm run test:ui` 會啟動 `bin/whatsmyagentdoing --demo` 對虛構 session 執行瀏覽器回歸檢查。用 `WMAD_HEADED=1 npm run test:ui` 可看到測試視窗，或設定 `WMAD_SCREENSHOTS` 為輸出資料夾以保存截圖。這些檢查使用 Chrome；Firefox 與 Safari 的原生影片控制項仍需手動測試。
 
 Go 版的檢查見 [go-app/README.md](go-app/README.md) 的「開發」一節。
 
