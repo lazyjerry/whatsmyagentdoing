@@ -246,12 +246,14 @@ func TestWatcherDropsSessionsThatAgeOut(t *testing.T) {
 func TestWatcherBigFileReadsHeadAndTail(t *testing.T) {
 	claude, _, _ := setLogDirs(t)
 	var b strings.Builder
-	b.WriteString(jsonLine(t, claudeUser("Head prompt")) + "\n")
+	b.WriteString(jsonLine(t, claudeUser("Head prompt")))
+	b.WriteString("\n")
 	filler := strings.Repeat("x", 1000) + "\n"
 	for b.Len() < headBytes+tailBytes+100_000 {
 		b.WriteString(filler)
 	}
-	b.WriteString(jsonLine(t, claudeText("Tail reply", "end_turn")) + "\n")
+	b.WriteString(jsonLine(t, claudeText("Tail reply", "end_turn")))
+	b.WriteString("\n")
 	p := filepath.Join(claude, "-p", "big.jsonl")
 	writeFile(t, p, b.String())
 
