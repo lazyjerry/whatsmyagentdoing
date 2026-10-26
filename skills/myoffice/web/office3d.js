@@ -227,11 +227,23 @@ export class Office3D extends window.Office {
   build() {
     if (this.plan.scene) return this.buildScene();
     const plan = this.plan;
-    if (this.room) { this.scene.remove(this.room); }
+    if (this.room) {
+      this.scene.remove(this.room);
+      // The floor plan regrows whenever the number of workers crosses a threshold; free the old room on the GPU.
+      this.room.traverse((o) => {
+        o.geometry?.dispose();
+        for (const m of [].concat(o.material || [])) { m.map?.dispose(); m.emissiveMap?.dispose(); m.dispose(); }
+      });
+    }
     this.room = new THREE.Group();
     this.scene.add(this.room);
     this.screens.clear();
     this.blinkers = [];
+    // A regrown floor plan may leave out the games corner; props from the old room must not be animated.
+    this.ball = null;
+    this.rods = null;
+    this.arcadeScreen = null;
+    this.lampLight = null;
     const { W, D, OW, MR, PY } = plan;
     const dark = this.pal.dark;
 
@@ -1018,6 +1030,14 @@ export class Office3D extends window.Office {
     return a;
   }
 
+  // Clones share the model's geometry and materials; only the bone textures and the props are their own.
+  dropActor(a) {
+    this.scene.remove(a.obj, a.prop);
+    a.mixer.stopAllAction();
+    a.obj.traverse((o) => { if (o.isSkinnedMesh) o.skeleton.dispose(); });
+    for (const m of [a.cup, a.book]) { m.geometry.dispose(); m.material.dispose(); }
+  }
+
   play(a, name) {
     if (a.current === name) return;
     const next = a.actions[name] || a.actions.idle;
@@ -1046,7 +1066,7 @@ export class Office3D extends window.Office {
 
   syncActors(dt) {
     for (const [k, a] of this.actors) {
-      if (!this.people.has(k)) { this.scene.remove(a.obj, a.prop); this.actors.delete(k); }
+      if (!this.people.has(k)) { this.dropActor(a); this.actors.delete(k); }
     }
     for (const p of this.people.values()) {
       const a = this.actorFor(p);
@@ -1168,7 +1188,7 @@ export class Office3D extends window.Office {
       this.room.updateMatrixWorld(true);
       this.seats = new Map();
       this.ground = new Map();
-      for (const a of this.actors.values()) this.scene.remove(a.obj, a.prop);
+      for (const a of this.actors.values()) this.dropActor(a);
       this.actors.clear();
     }
     const dt = Math.min(0.05, this.clock.getDelta());
