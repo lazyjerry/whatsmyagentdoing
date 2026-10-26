@@ -41,6 +41,12 @@ var (
 	rePortSuffix   = regexp.MustCompile(`:\d+$`)
 	reNowPrefix    = regexp.MustCompile(`^\{"now":\d+,`)
 	reActivityHead = regexp.MustCompile(`[:\s]`)
+	// System temp folders. A session whose cwd lives here was almost always
+	// spawned by a program (a hook, a daemon, another agent's skill), not by a
+	// person: ai-audit runs `agy -p` from os.TempDir(), Claude's scratchpad
+	// sits under /tmp. Both the $TMPDIR spelling and its resolved path
+	// (/var/folders/… vs /private/var/folders/… on macOS) are kept.
+	tempDirs = systemTempDirs()
 )
 
 type Options struct {
@@ -87,6 +93,32 @@ type Snapshot struct {
 	Now      int64   `json:"now"`
 	Lang     *string `json:"lang"`
 	Sessions []View  `json:"sessions"`
+}
+
+func systemTempDirs() []string {
+	var out []string
+	for _, d := range []string{os.TempDir(), "/tmp"} {
+		d = filepath.Clean(d)
+		out = append(out, d)
+		if r, err := filepath.EvalSymlinks(d); err == nil && r != d {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// inTempDir reports whether cwd is one of the system temp folders or below.
+func inTempDir(cwd string) bool {
+	if cwd == "" {
+		return false
+	}
+	cwd = filepath.Clean(cwd)
+	for _, d := range tempDirs {
+		if cwd == d || strings.HasPrefix(cwd, d+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 func nstr(s string) *string {
@@ -150,6 +182,11 @@ func view(s Session, now int64, privacy bool) View {
 	}
 	if s.Cwd != "" {
 		out.Project = nstr(baseName(s.Cwd))
+	}
+	// Work started from a temp folder is a background tool call: show the
+	// bell, whatever kind of prompt the log says it was.
+	if inTempDir(s.Cwd) {
+		out.PromptKind = nstr("notification")
 	}
 	if status == "tool" || status == "waiting" {
 		out.Activity = nstr(s.Activity)

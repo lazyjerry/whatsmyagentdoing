@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -453,6 +454,33 @@ func TestViewExposesWorkspace(t *testing.T) {
 	b, _ = json.Marshal(view(Session{Agent: "codex", ID: "y"}, now, false))
 	if !strings.Contains(string(b), `"workspace":null`) || !strings.Contains(string(b), `"tool":null`) {
 		t.Errorf("unset workspace and tool must be null: %s", b)
+	}
+}
+
+func TestViewMarksTempDirSessionsAsNotifications(t *testing.T) {
+	now := time.Now().UnixMilli()
+	tmp := filepath.Join(os.TempDir(), "agy-run")
+	v := view(Session{Agent: "gemini", ID: "a", Cwd: tmp, PromptKind: "command"}, now, false)
+	if v.PromptKind == nil || *v.PromptKind != "notification" {
+		t.Errorf("cwd under os.TempDir() must read as a background call: %+v", v)
+	}
+	if resolved, err := filepath.EvalSymlinks(os.TempDir()); err == nil {
+		v = view(Session{Agent: "claude", ID: "b", Cwd: filepath.Join(resolved, "x")}, now, false)
+		if v.PromptKind == nil || *v.PromptKind != "notification" {
+			t.Errorf("the resolved temp path counts too: %+v", v)
+		}
+	}
+	v = view(Session{Agent: "claude", ID: "c", Cwd: "/tmp/scratch"}, now, false)
+	if v.PromptKind == nil || *v.PromptKind != "notification" {
+		t.Errorf("/tmp counts: %+v", v)
+	}
+	v = view(Session{Agent: "claude", ID: "d", Cwd: "/home/dev/tmpfiles"}, now, false)
+	if v.PromptKind != nil {
+		t.Errorf("a folder merely named like tmp must not match: %+v", v)
+	}
+	v = view(Session{Agent: "codex", ID: "e"}, now, false)
+	if v.PromptKind != nil {
+		t.Errorf("no cwd, no rule: %+v", v)
 	}
 }
 
