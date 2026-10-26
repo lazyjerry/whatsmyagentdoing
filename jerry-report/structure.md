@@ -225,7 +225,8 @@ stateDiagram-v2
 | scene | office | office 或已安裝場景 id |
 | agent | all | all、claude、codex、gemini |
 | showSub | false | 顯示子代理 |
-| showIdle | false | 顯示 idle（僅清單） |
+| showNeedsYou、showError、showWorking、showFinished | true | 各狀態組是否顯示（頁首計數 chip 與設定面板共用） |
+| showIdle | false | 顯示 idle（同上，預設關） |
 | showAgent | true | 顯示 agent 標記與圖例 |
 | lang | auto | auto 或 I18N 的語言碼 |
 

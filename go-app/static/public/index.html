@@ -56,6 +56,12 @@
   .summary { display: flex; gap: 18px; flex-wrap: wrap; margin-left: auto; }
   .chip { display: inline-flex; align-items: center; gap: 6px; padding: 0; font-size: 12px; color: var(--muted); }
   .chip b { color: var(--ink); font-weight: 600; }
+  /* Each count doubles as a show/hide switch for that status group. */
+  button.chip { border: 0; background: none; font: inherit; font-size: 12px; cursor: pointer; border-radius: 6px; padding: 2px 4px; margin: -2px -4px; }
+  button.chip:hover { background: var(--line); }
+  button.chip[aria-pressed="false"] { opacity: .45; }
+  button.chip[aria-pressed="false"] .dot { background: none; box-shadow: inset 0 0 0 1.5px currentColor; }
+  button.chip[aria-pressed="false"] b { text-decoration: line-through; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
   .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   .seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
@@ -87,6 +93,9 @@
   #agentSeg button { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 8px 6px; }
   .setting-toggles { display: grid; gap: 12px; margin-top: 14px; }
   .setting-toggles .tog { color: var(--ink); gap: 8px; }
+  .status-label { margin-top: 14px; margin-bottom: 0; }
+  .status-toggles { grid-template-columns: 1fr 1fr; gap: 10px 12px; margin-top: 10px; }
+  .status-toggles .dot { margin-right: -2px; }
   .tog input { accent-color: var(--tool); margin: 0; width: 15px; height: 15px; }
   .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .setting-row .setting-label { margin: 0; }
@@ -266,9 +275,16 @@
               <button data-v="cli"><i class="hair" data-hair="cli"></i>CLI</button>
               <button data-v="other" data-t="other"></button>
             </div>
+            <span class="setting-label status-label" id="statusLabel" data-t="showStatuses"></span>
+            <div class="setting-toggles status-toggles" id="statusToggles" role="group" aria-labelledby="statusLabel">
+              <label class="tog"><input type="checkbox" data-g="needsYou"> <span class="dot" style="color:var(--waiting)"></span><span data-t="needsYou"></span></label>
+              <label class="tog"><input type="checkbox" data-g="error"> <span class="dot" style="color:var(--error)"></span><span data-t="error"></span></label>
+              <label class="tog"><input type="checkbox" data-g="working"> <span class="dot" style="color:var(--tool)"></span><span data-t="working"></span></label>
+              <label class="tog"><input type="checkbox" data-g="finished"> <span class="dot" style="color:var(--done)"></span><span data-t="finished"></span></label>
+              <label class="tog"><input type="checkbox" data-g="idle" id="showIdle"> <span class="dot" style="color:var(--idle)"></span><span data-t="idle"></span></label>
+            </div>
             <div class="setting-toggles">
               <label class="tog"><input type="checkbox" id="showSub"> <span data-t="subagents"></span></label>
-              <label class="tog" id="idleToggle"><input type="checkbox" id="showIdle"> <span data-t="showIdle"></span></label>
               <label class="tog" id="agentBadgeToggle"><input type="checkbox" id="showAgent"> <span data-t="showAgent"></span></label>
             </div>
           </div>
@@ -349,7 +365,9 @@ const store = (() => {
   return { get, set };
 })();
 
-const PREF_DEFAULTS = { view: 'office', quality: 'mid', scene: 'office', agent: 'all', platform: 'all', showSub: false, showIdle: false, showAgent: true, lang: 'auto' };
+const PREF_DEFAULTS = { view: 'office', quality: 'mid', scene: 'office', agent: 'all', platform: 'all', showSub: false, showAgent: true, lang: 'auto',
+  // One switch per status group (the counts in the header and the settings panel share them).
+  showNeedsYou: true, showError: true, showWorking: true, showFinished: true, showIdle: false };
 function validPreference(k, v) {
   if (!Object.hasOwn(PREF_DEFAULTS, k)) return false;
   if (typeof PREF_DEFAULTS[k] === 'boolean') return typeof v === 'boolean';
@@ -402,12 +420,16 @@ function onPlatform(s) {
   if (state.platform === 'other') return s.platform !== 'vscode' && s.platform !== 'cli';
   return s.platform === state.platform;
 }
+// Header counts, list sections and the show/hide switches all follow this order.
 const GROUPS = [
-  { key: 'needsYou', match: (s) => s === 'waiting' || s === 'error' },
-  { key: 'working', match: (s) => ACTIVE.has(s) },
-  { key: 'finished', match: (s) => s === 'done' || s === 'interrupted' },
-  { key: 'idle', match: (s) => s === 'idle' },
+  { key: 'needsYou', show: 'showNeedsYou', color: 'var(--waiting)', match: (s) => s === 'waiting' },
+  { key: 'error', show: 'showError', color: 'var(--error)', match: (s) => s === 'error' },
+  { key: 'working', show: 'showWorking', color: 'var(--tool)', match: (s) => ACTIVE.has(s) },
+  { key: 'finished', show: 'showFinished', color: 'var(--done)', match: (s) => s === 'done' || s === 'interrupted' },
+  { key: 'idle', show: 'showIdle', color: 'var(--idle)', match: (s) => s === 'idle' },
 ];
+const groupOf = (status) => GROUPS.find((g) => g.match(status));
+const statusShown = (status) => { const g = groupOf(status); return !g || state[g.show]; };
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -518,7 +540,7 @@ function visible() {
   return state.data.sessions.filter((s) =>
     (state.agent === 'all' || s.agent === state.agent) && onPlatform(s) &&
     (state.showSub || !s.subagent) &&
-    (state.showIdle || s.status !== 'idle'));
+    statusShown(s.status));
 }
 
 function render() {
@@ -527,21 +549,23 @@ function render() {
   const all = state.data.sessions.filter((s) => (state.agent === 'all' || s.agent === state.agent) && onPlatform(s) && (state.showSub || !s.subagent));
 
   const count = (f) => all.filter((s) => f(s.status)).length;
-  document.getElementById('summary').innerHTML = GROUPS.slice(0, 3).map((g) => {
+  // The counts always include hidden groups, so a switched-off group still shows how many it hides.
+  document.getElementById('summary').innerHTML = GROUPS.map((g) => {
     const n = count(g.match);
-    const color = g.key === 'needsYou' ? 'var(--waiting)' : g.key === 'working' ? 'var(--tool)' : 'var(--done)';
-    return `<span class="chip"><span class="dot" style="color:${color}"></span>${L[g.key]} <b>${n}</b></span>`;
+    const on = !!state[g.show];
+    return `<button class="chip" type="button" data-g="${g.key}" aria-pressed="${on}" title="${esc(L.showStatuses)}"><span class="dot" style="color:${g.color}"></span>${L[g.key]} <b>${n}</b></button>`;
   }).join('');
 
   const working = count((s) => ACTIVE.has(s));
-  const needs = count(GROUPS[0].match);
+  const needs = count((s) => s === 'waiting' || s === 'error');
   document.title = (needs ? `(${needs}!) ` : working ? `(${working}) ` : '') + L.title;
 
   const main = document.getElementById('main');
   const officeMode = state.view === 'office';
   document.getElementById('officeWrap').style.display = officeMode ? '' : 'none';
-  // The office decides who sits at a desk and who wanders around.
-  const officeList = all;
+  // The office decides who sits at a desk and who wanders around; switched-off
+  // status groups stay out of the room (and out of the off-duty count).
+  const officeList = list;
   const poppedOut = !!popout?.win;
   // Wait for the first snapshot so people start at their places instead of
   // all walking in through the door.
@@ -550,7 +574,6 @@ function render() {
     office.setVisible(officeMode && !poppedOut);
     office.update(officeList);
   }
-  document.getElementById('idleToggle').style.display = officeMode ? 'none' : '';
   if (poppedOut) {
     document.getElementById('officeWrap').style.display = 'none';
     main.innerHTML = `<div class="empty">${esc(L.pipOn)}</div>`;
@@ -563,7 +586,7 @@ function render() {
     refreshTip();
     return;
   }
-  const groups = PIP ? GROUPS.slice(0, 2) : GROUPS;
+  const groups = PIP ? GROUPS.slice(0, 3) : GROUPS;
   if (!list.some((s) => groups.some((g) => g.match(s.status)))) {
     main.innerHTML = `<div class="empty">${esc(PIP ? L.pipQuiet : L.empty)}</div>`;
     return;
@@ -644,11 +667,22 @@ document.getElementById('platformSeg').addEventListener('click', (e) => {
 });
 document.querySelectorAll('#platformSeg .hair').forEach((el) => el.style.setProperty('--hair', OFFICE_PLATFORM_HAIR[el.dataset.hair][0]));
 const showSub = document.getElementById('showSub');
-const showIdle = document.getElementById('showIdle');
 const showAgent = document.getElementById('showAgent');
 showSub.addEventListener('change', () => { state.showSub = showSub.checked; store.set('showSub', state.showSub); render(); });
-showIdle.addEventListener('change', () => { state.showIdle = showIdle.checked; store.set('showIdle', state.showIdle); render(); });
 showAgent.addEventListener('change', () => { state.showAgent = showAgent.checked; store.set('showAgent', state.showAgent); syncControls(); render(); });
+// Status groups: the header counts and the settings checkboxes flip the same preference.
+function setStatusShown(key, on) {
+  const g = GROUPS.find((x) => x.key === key); if (!g) return;
+  state[g.show] = on; store.set(g.show, on); syncControls(); render();
+}
+document.getElementById('summary').addEventListener('click', (e) => {
+  const b = e.target.closest('button.chip'); if (!b) return;
+  setStatusShown(b.dataset.g, b.getAttribute('aria-pressed') !== 'true');
+});
+document.getElementById('statusToggles').addEventListener('change', (e) => {
+  const c = e.target.closest('input[data-g]'); if (!c) return;
+  setStatusShown(c.dataset.g, c.checked);
+});
 
 const notifyBtn = document.getElementById('notify');
 function syncControls() {
@@ -663,8 +697,8 @@ function syncControls() {
   activeFilter.textContent = [AGENT_NAME[state.agent], PLATFORM_NAME[state.platform] || (state.platform === 'other' ? L.other : '')].filter(Boolean).join(' · ');
   document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', b.classList.contains('on')));
   showSub.checked = state.showSub;
-  showIdle.checked = state.showIdle;
   showAgent.checked = state.showAgent;
+  document.querySelectorAll('#statusToggles input[data-g]').forEach((c) => { const g = GROUPS.find((x) => x.key === c.dataset.g); c.checked = !!(g && state[g.show]); });
   document.getElementById('agentBadgeToggle').style.display = state.view === 'office' ? '' : 'none';
   document.getElementById('agentLegend').hidden = !state.showAgent;
   popout?.sync(PIP, state.view);

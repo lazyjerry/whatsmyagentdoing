@@ -106,13 +106,13 @@ skill 呼叫的就是這個執行檔（`scripts/installSkill.sh` 複製到 `skil
 
 介面支援 English、繁體中文、简体中文、日本語、한국어、Español、Français、Deutsch 與 Português。預設跟著你寫 prompt 的語言（沒有就跟瀏覽器語言）；可從 🌐 選單手動指定。
 
-清單檢視中，session 分成 **需要你 → 工作中 → 已完成** 三組，附目前這一輪的即時計時器、resume 指令的複製按鈕（`claude --resume …` / `codex resume …`）、agent 完工時的瀏覽器通知（可選），以及 Claude / Codex / subagent 篩選器。分頁標題會顯示有多少個 agent 在工作。
+頁首右側的 **需要你／錯誤／工作中／已完成／閒置** 五個計數同時是開關：點一下就隱藏或顯示該狀態的 agent（辦公室與清單都適用，數字照算），設定面板的「顯示狀態」勾選與它同步；閒置預設隱藏。清單檢視中，session 依同樣五組分區，附目前這一輪的即時計時器、resume 指令的複製按鈕（`claude --resume …` / `codex resume …`）、agent 完工時的瀏覽器通知（可選），以及 Claude / Codex / subagent 篩選器。分頁標題會顯示有多少個 agent 在工作。
 
 **Agent 徽章：** 2D 與 3D 中，每個 agent（含 subagent）名字旁都有透明底的 Claude、Codex、Gemini、OpenCode 官方 logo。相同圖示也出現在圖例、清單卡片與篩選器。到 **設定 → Agent 徽章** 可隱藏辦公室標記與圖例，設定會保存。圖示隨套件附帶於本機，圖片載入失敗時以縮寫字母替代。詳見[圖示來源與授權](skills/myoffice/assets/agents/README.md)。
 
 工具列固定顯示檢視、2D/3D 與彈出視窗控制項。場景選擇、agent 篩選、顯示選項、通知與語言則收在**設定**裡。
 
-**彈出視窗：** 支援 [Document Picture-in-Picture API](https://developer.chrome.com/docs/web-platform/document-picture-in-picture) 的瀏覽器可以把辦公室或清單開成可互動、永遠置頂的視窗。精簡清單只顯示 **需要你** 與 **工作中**。瀏覽器儲存可用時，檢視、畫質、場景、篩選、語言與徽章設定會與主分頁同步。關閉彈出視窗會還原主檢視，且只有主分頁會送通知。
+**彈出視窗：** 支援 [Document Picture-in-Picture API](https://developer.chrome.com/docs/web-platform/document-picture-in-picture) 的瀏覽器可以把辦公室或清單開成可互動、永遠置頂的視窗。精簡清單只顯示 **需要你**、**錯誤** 與 **工作中**。瀏覽器儲存可用時，檢視、畫質、場景、篩選、語言與徽章設定會與主分頁同步。關閉彈出視窗會還原主檢視，且只有主分頁會送通知。
 
 當 Document PiP 不可用時，辦公室檢視的 **彈出** 會改為啟動本機的唯讀影片預覽（2D 或 3D 辦公室）。用它的影片 PiP 按鈕，或瀏覽器自己的影片控制項／右鍵選單（例如 Firefox）把它浮起來。用完請停止預覽。不需要螢幕分享權限，也不會上傳任何影片。背景動畫可能因瀏覽器節流而降低幀率；這個 fallback 不支援清單卡片，也不能點選 agent。
 

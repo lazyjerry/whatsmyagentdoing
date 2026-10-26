@@ -83,6 +83,23 @@ async function drawnLogos(target) {
   assert.match(await page.locator('#chkBtn').getAttribute('data-ver'),/^v\d/);
   assert.match(await page.locator('#clock').innerText(),/\d/);
   check('no title row: controls left, counts right, version on the check button, clock in the corner');
+  assert.deepEqual(await page.locator('#summary button.chip').evaluateAll(bs=>bs.map(b=>b.dataset.g)),['needsYou','error','working','finished','idle']);
+  assert.match(await page.locator('#summary button.chip[data-g="finished"]').innerText(),/1$/);
+  await page.click('#summary button.chip[data-g="finished"]');
+  assert.equal(await page.locator('#summary button.chip[data-g="finished"]').getAttribute('aria-pressed'),'false');
+  assert.match(await page.locator('#summary button.chip[data-g="finished"]').innerText(),/1$/);
+  assert.equal(await page.evaluate(()=>office.people.get('claude:done')?.leaving),true);
+  await openSettings(page);
+  assert.equal(await page.locator('#statusToggles input[data-g="finished"]').isChecked(),false);
+  await page.check('#statusToggles input[data-g="finished"]');
+  assert.equal(await page.locator('#summary button.chip[data-g="finished"]').getAttribute('aria-pressed'),'true');
+  assert.equal(await page.evaluate(()=>office.people.get('claude:done')?.leaving),false);
+  await page.click('#viewSeg button[data-v="list"]');
+  await page.click('#summary button.chip[data-g="working"]');
+  assert.equal(await page.locator('#main section h2').evaluateAll(hs=>hs.map(h=>h.textContent.replace(/\s*\d+$/,''))).then(a=>a.includes('Working')),false);
+  await page.click('#summary button.chip[data-g="working"]');
+  await page.click('#viewSeg button[data-v="office"]');await stable(page);
+  check('status counts are switches: they hide the group in the office and list, keep the number, and mirror the settings checkboxes');
   assert.equal(await page.locator('#showAgent').isChecked(),true);
   assert.deepEqual([...new Set(await badges(page))].sort(),['Cl','Cx','G','Oc']);
   assert.deepEqual(await drawnLogos(page),['claude','codex','gemini','opencode']);
@@ -229,7 +246,7 @@ async function drawnLogos(target) {
   await page.locator('#settingsMenu > summary').press('Escape');
   assert.equal(await page.locator('#settingsPanel').isVisible(),false);
   assert.equal(await page.locator('#settingsMenu > summary').evaluate(el=>el===document.activeElement),true);
-  await openSettings(page);await page.click('#summary');
+  await openSettings(page);await page.click('body',{position:{x:5,y:5}});
   assert.equal(await page.locator('#settingsPanel').isVisible(),false);
   for (const width of [320,390,768,1280]) {
    await page.setViewportSize({width,height:800});
