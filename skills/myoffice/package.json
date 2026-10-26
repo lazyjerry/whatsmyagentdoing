@@ -5,7 +5,8 @@
   "files": [
     "public",
     "assets",
-    "SKILL.md"
+    "SKILL.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20"

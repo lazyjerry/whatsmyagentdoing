@@ -28,6 +28,7 @@ var staticFiles = map[string][2]string{
 	"/i18n.js":     {"i18n.js", "text/javascript; charset=utf-8"},
 	"/popout.js":   {"popout.js", "text/javascript; charset=utf-8"},
 	"/sw.js":       {"sw.js", "text/javascript; charset=utf-8"},
+	"/LICENSE":     {"LICENSE", "text/plain; charset=utf-8"},
 }
 
 var mimeTypes = map[string]string{

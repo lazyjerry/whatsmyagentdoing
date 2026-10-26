@@ -168,4 +168,12 @@ Go 版的檢查見 [go-app/README.md](go-app/README.md) 的「開發」一節。
 
 ## 授權
 
-MIT。`skills/myoffice/assets/kenney/` 內的 3D 模型由 [Kenney](https://kenney.nl) 製作，以 CC0 釋出（見該目錄的授權檔）。
+MIT，見 [LICENSE](LICENSE)。本倉庫 fork 自 [Charonyuu/whatsmyagentdoing](https://github.com/Charonyuu/whatsmyagentdoing)，原作者 cheoyu；Go 後端等後續改寫由 LazyJerry 維護，LICENSE 內兩者的版權聲明並列。
+
+授權檔隨每種散佈形式附帶：`skills/myoffice/LICENSE` 跟著 skill 安裝；Go 執行檔內嵌同一份，啟動後開 `http://127.0.0.1:4545/LICENSE` 可讀。
+
+第三方內容：
+
+- **three.js**（MIT，Copyright Three.js Authors）：3D 畫面使用，授權聲明保留在 `public/office3d.js` 尾端。
+- **Kenney** 模型（CC0）：`skills/myoffice/assets/kenney/` 與各場景包，見目錄內的授權檔。CC0 不要求署名，仍感謝 [Kenney](https://kenney.nl)。
+- **Agent logo**：Claude、Codex、Gemini、OpenCode 的官方圖示為各自所有者的商標，本專案未獲其背書，MIT 授權不及於商標；來源見[圖示來源與授權](skills/myoffice/assets/agents/README.md)。

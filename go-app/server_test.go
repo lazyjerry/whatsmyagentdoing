@@ -248,6 +248,7 @@ func TestStaticAndAssets(t *testing.T) {
 		{"/office3d.js", "text/javascript; charset=utf-8"},
 		{"/i18n.js", "text/javascript; charset=utf-8"},
 		{"/popout.js", "text/javascript; charset=utf-8"},
+		{"/LICENSE", "text/plain; charset=utf-8"},
 		{"/assets/agents/claude.png", "image/png"},
 		{"/assets/kenney/furniture/desk.glb", "model/gltf-binary"},
 	}
