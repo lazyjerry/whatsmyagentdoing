@@ -18,7 +18,7 @@ async function screenshot(page, name) {
 const checks=[];
 const check=(name)=>{checks.push(name);console.log('PASS',name)};
 const sessions = [
- {key:'claude:one', id:'one', agent:'claude',project:'claude-project',status:'thinking',platform:'vscode'},
+ {key:'claude:one', id:'one', agent:'claude',project:'claude-project',status:'thinking',platform:'vscode',title:'Build script',workspace:'/demo/workspace'},
  {key:'codex:two', id:'two', agent:'codex',project:'codex-project',status:'waiting',platform:'cli',promptKind:'notification'},
  {key:'gemini:three', id:'three', agent:'gemini',project:'gemini-project',status:'tool',activity:'Read: index.js',platform:'cli'},
  {key:'claude:done', id:'done', agent:'claude',project:'finished-project',status:'done',platform:'sdk',prompt:'/myoffice',promptKind:'command'},
@@ -117,6 +117,22 @@ async function drawnLogos(target) {
   assert.deepEqual(await page.locator('#tip .meta dd').allInnerTexts(),['/demo/codex-project','now','two']);
   await page.keyboard.press('Escape');assert.equal(await page.locator('#tip').isVisible(),false);
   check('the hover card tags the prompt kind and lists folder, times and ids under the preview');
+  await page.evaluate(()=>officeOpts.onHover(state.data.sessions.find(s=>s.key==='claude:one'),{x:40,y:40},true));
+  assert.equal(await page.locator('#tip .title').innerText(),'Build script');
+  assert.deepEqual(await page.locator('#tip .meta dt').allInnerTexts(),['Folder','Workspace','Last activity','Session']);
+  assert.deepEqual(await page.locator('#tip .foot .copy').allInnerTexts(),['Copy resume cmd','Copy title']);
+  assert.equal(await page.locator('#tip .foot .copy').nth(1).getAttribute('data-copy'),'Build script');
+  assert.equal(await page.locator('#tip .foot .open').getAttribute('href'),'vscode://anthropic.claude-code/open?session=one');
+  assert.equal(await page.evaluate(()=>vscodeLink({agent:'codex',platform:'vscode',id:'t1'})),'<a class="open" href="vscode://openai.chatgpt/local/t1">Open in VS Code</a>');
+  assert.equal(await page.evaluate(()=>vscodeLink({agent:'gemini',platform:'vscode',id:'g1'})),'');
+  assert.equal(await page.evaluate(()=>resumeCmd({agent:'gemini',tool:'agy',id:'c1',cwd:'/w'})),"cd '/w' && agy --conversation 'c1'");
+  assert.equal(await page.evaluate(()=>resumeCmd({agent:'gemini',id:'g1',sessionId:'s1'})),"gemini --resume 's1'");
+  await page.keyboard.press('Escape');
+  await page.click('#viewSeg [data-v=list]');
+  assert.equal(await page.locator('.grid .card .open').count(),1);
+  assert.equal(await page.locator('.grid .card .meta').count(),0);
+  await page.click('#viewSeg [data-v=office]');await stable(page);
+  check('the card shows the IDE title, a copy-title button, the workspace row and a VS Code deep link for VS Code Claude sessions');
   await openSettings(page);await page.uncheck('#showAgent');assert.equal((await badges(page)).length,0);
   assert.equal(await page.locator('#agentLegend').isVisible(),false);
   await page.reload();await stable(page);assert.equal(await page.locator('#showAgent').isChecked(),false);

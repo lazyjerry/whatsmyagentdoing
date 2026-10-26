@@ -228,6 +228,24 @@ func TestApplyClaudeTitlesAndSkips(t *testing.T) {
 	applyClaude(s, "not an object") // must not panic
 }
 
+func TestApplyClaudeAiTitleAndWorkspace(t *testing.T) {
+	s := newSession("claude", "s", "f")
+	applyClaude(s, parseJSON(t, `{"type":"user","cwd":"/home/dev/ws","message":{"role":"user","content":"hi"}}`))
+	applyClaude(s, parseJSON(t, `{"type":"ai-title","aiTitle":"Build script"}`))
+	if s.Title != "Build script" {
+		t.Errorf("ai-title fills the title: %q", s.Title)
+	}
+	applyClaude(s, parseJSON(t, `{"type":"custom-title","customTitle":"Renamed"}`))
+	applyClaude(s, parseJSON(t, `{"type":"ai-title","aiTitle":"Later guess"}`))
+	if s.Title != "Renamed" {
+		t.Errorf("custom-title must beat a later ai-title: %q", s.Title)
+	}
+	applyClaude(s, parseJSON(t, `{"type":"user","cwd":"/home/dev/ws/sub","message":{"role":"user","content":"cd"}}`))
+	if s.Workspace != "/home/dev/ws" || s.Cwd != "/home/dev/ws/sub" {
+		t.Errorf("workspace keeps the first cwd, cwd follows: %q %q", s.Workspace, s.Cwd)
+	}
+}
+
 func TestDescribeClaudeTool(t *testing.T) {
 	cases := []struct {
 		name  string

@@ -187,6 +187,19 @@ func TestWatcherTracksAndReadsIncrements(t *testing.T) {
 	}
 }
 
+func TestWatcherReadsCustomTitleSidecar(t *testing.T) {
+	claude, _, _ := setLogDirs(t)
+	p := claudeLog(t, claude, "s1", claudeUser("Fix the bug"))
+	appendFile(t, p, `{"type":"ai-title","aiTitle":"Guessed"}`+"\n")
+	writeFile(t, filepath.Join(filepath.Dir(p), "s1", "custom-title.json"), `{"customTitle":"Renamed"}`)
+	w := NewWatcher(24)
+	w.Tick()
+	got := w.Sessions()
+	if len(got) != 1 || got[0].Title != "Renamed" {
+		t.Fatalf("sidecar title must beat the log's ai-title: %+v", got)
+	}
+}
+
 func TestWatcherSubagentsAndWindow(t *testing.T) {
 	claude, _, _ := setLogDirs(t)
 	claudeLog(t, claude, "main", claudeUser("Main prompt"))

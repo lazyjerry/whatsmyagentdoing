@@ -142,8 +142,9 @@
   .err { font-size: 12.5px; color: var(--error); }
   .foot { display: flex; gap: 8px; align-items: center; color: var(--faint); font-size: 11.5px; min-width: 0; }
   .foot .model { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .copy { margin-left: auto; border: 0; background: none; color: var(--faint); font: inherit; font-size: 11.5px; cursor: pointer; padding: 0; flex: none; }
-  .copy:hover { color: var(--ink); }
+  .copy, .open { margin-left: auto; border: 0; background: none; color: var(--faint); font: inherit; font-size: 11.5px; cursor: pointer; padding: 0; flex: none; text-decoration: none; }
+  .copy:hover, .open:hover { color: var(--ink); }
+  .foot .copy ~ .copy, .foot .copy ~ .open { margin-left: 0; }
 
   [data-s="thinking"] { --s: var(--thinking); }
   [data-s="tool"] { --s: var(--tool); }
@@ -440,8 +441,22 @@ const shq = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
 function resumeCmd(s) {
   const cd = s.cwd ? `cd ${shq(s.cwd)} && ` : '';
   if (s.agent === 'claude') return `${cd}claude --resume ${shq(s.id)}`;
+  if (s.agent === 'gemini' && s.tool === 'agy') return `${cd}agy --conversation ${shq(s.id)}`;
   if (s.agent === 'gemini') return `${cd}gemini --resume ${shq(s.sessionId || s.id)}`;
   return `${cd}codex resume ${shq(s.id)}`;
+}
+
+// Deep links the VS Code extensions register. Claude Code: reveals the
+// session's tab if it is open, otherwise resumes it. Codex: opens the sidebar
+// and navigates its webview to the local thread. Only sessions started from
+// VS Code have a tab to go to.
+function vscodeLink(s) {
+  if (s.platform !== 'vscode' || s.subagent) return '';
+  let href = '';
+  if (s.agent === 'claude') href = `vscode://anthropic.claude-code/open?session=${encodeURIComponent(s.id)}`;
+  else if (s.agent === 'codex') href = `vscode://openai.chatgpt/local/${encodeURIComponent(s.id)}`;
+  if (!href) return '';
+  return `<a class="open" href="${href}">${L.openVscode}</a>`;
 }
 
 function agentLogo(agent) {
@@ -461,6 +476,9 @@ function tags(s) {
 function meta(s, now) {
   const rows = [];
   if (s.cwd) rows.push([L.cwd, s.cwd, 'mono']);
+  // The IDE's session list is per workspace folder, which the shell may have
+  // `cd`-ed away from; only worth a row when the two differ.
+  if (s.workspace && s.workspace !== s.cwd) rows.push([L.workspace, s.workspace, 'mono']);
   if (s.startedAt) rows.push([L.started, ago(s.startedAt, now)]);
   if (s.lastEventAt) rows.push([L.lastEvent, ago(s.lastEventAt, now)]);
   rows.push([L.sessionId, s.sessionId || s.id, 'mono']);
@@ -489,7 +507,7 @@ function card(s, now, detail = false) {
     <div class="status"><span class="ind"><i></i><i></i><i></i></span><span class="lbl">${esc(L[s.status] || s.status)}</span>${act}</div>
     ${err}${q}${r}
     ${detail ? meta(s, now) : ''}
-    <div class="foot"><span class="model">${esc((s.model || '') + sub)}</span><button class="copy" data-copy="${esc(resumeCmd(s))}">${L.copy}</button></div>
+    <div class="foot"><span class="model">${esc((s.model || '') + sub)}</span><button class="copy" data-copy="${esc(resumeCmd(s))}">${L.copy}</button>${s.title ? `<button class="copy" data-copy="${esc(s.title)}">${L.copyTitle}</button>` : ''}${vscodeLink(s)}</div>
   </div>`;
 }
 
@@ -654,8 +672,9 @@ notifyBtn.addEventListener('click', () => Notification.requestPermission().then(
 
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-copy]'); if (!b) return;
+  const label = b.textContent;
   navigator.clipboard?.writeText(b.dataset.copy).then(() => {
-    b.textContent = L.copied; setTimeout(() => (b.textContent = L.copy), 1400);
+    b.textContent = L.copied; setTimeout(() => (b.textContent = label), 1400);
   });
 });
 

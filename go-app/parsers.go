@@ -30,11 +30,13 @@ type Session struct {
 	File          string
 	SessionID     string
 	Cwd           string
+	Workspace     string // first cwd in the log: the folder the IDE window or CLI was opened in
 	Title         string
 	Model         string
 	Subagent      bool
 	ParentID      string
 	Platform      string // vscode | cli | sdk | desktop; "" when the log says nothing
+	Tool          string // "agy" for Antigravity rows; "" when the agent's default CLI resumes it
 	PromptKind    string // command | notification; "" for a plain prompt
 	Status        string
 	Activity      string
@@ -46,6 +48,7 @@ type Session struct {
 	StartedAt     int64
 	Mtime         int64 // file mtime, set by the watcher
 	GeminiProject string
+	titleLocked   bool // a custom (renamed) title beats any later ai-title
 }
 
 var waitingTools = map[string]bool{"AskUserQuestion": true, "ExitPlanMode": true}
@@ -353,6 +356,9 @@ func applyClaude(s *Session, v any) {
 	ts := stamp(s, str(d, "timestamp"))
 	if cwd := str(d, "cwd"); cwd != "" {
 		s.Cwd = cwd
+		if s.Workspace == "" {
+			s.Workspace = cwd
+		}
 	}
 	if ep := str(d, "entrypoint"); ep != "" {
 		s.Platform = claudePlatform(ep)
@@ -361,6 +367,12 @@ func applyClaude(s *Session, v any) {
 	switch str(d, "type") {
 	case "custom-title":
 		if t := str(d, "customTitle"); t != "" {
+			s.Title = t
+			s.titleLocked = true
+		}
+	case "ai-title":
+		// Same title the VS Code extension's session list shows, unless renamed.
+		if t := str(d, "aiTitle"); t != "" && !s.titleLocked {
 			s.Title = t
 		}
 	case "agent-name":

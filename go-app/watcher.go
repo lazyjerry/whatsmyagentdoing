@@ -122,6 +122,23 @@ func claudeFiles() []candidate {
 	return out
 }
 
+// A session renamed in the VS Code extension keeps the name next to its log,
+// in <project>/<sessionId>/custom-title.json; the log itself may predate it.
+func claudeCustomTitle(logFile string) string {
+	side := filepath.Join(strings.TrimSuffix(logFile, ".jsonl"), "custom-title.json")
+	b, err := os.ReadFile(side)
+	if err != nil {
+		return ""
+	}
+	var v struct {
+		CustomTitle string `json:"customTitle"`
+	}
+	if json.Unmarshal(b, &v) != nil {
+		return ""
+	}
+	return strings.TrimSpace(v.CustomTitle)
+}
+
 var (
 	reGeminiSession = regexp.MustCompile(`^session-.*\.jsonl?$`)
 	reJsonlExt      = regexp.MustCompile(`\.jsonl?$`)
@@ -218,6 +235,9 @@ type Watcher struct {
 	geminiProjects      map[string]string // tmp dir name -> project path
 	geminiRegistryMtime int64
 	codexIndexMtime     int64
+	agy                 map[string]*Session // conversation id -> Antigravity row (see antigravity.go)
+	agyMtime            int64               // db + WAL mtime at the last successful read
+	agyUnavailable      bool                // sqlite3 missing or the db unreadable: logged once, then skipped
 	lastScan            int64
 	candidates          []candidate
 	changes             chan struct{}
@@ -232,6 +252,7 @@ func NewWatcher(hours float64) *Watcher {
 		failed:         map[string]int64{},
 		codexNames:     map[string]string{},
 		geminiProjects: map[string]string{},
+		agy:            map[string]*Session{},
 		changes:        make(chan struct{}, 1),
 		stop:           make(chan struct{}),
 	}
@@ -329,12 +350,52 @@ func (w *Watcher) loadGeminiProjects() bool {
 	return true
 }
 
+// loadAntigravity re-reads conversation_summaries.db when it (or its WAL)
+// changed; returns true when any session differs from the last read.
+func (w *Watcher) loadAntigravity(since int64) bool {
+	if w.agyUnavailable {
+		return false
+	}
+	st := statSafe(agyDB)
+	if st == nil {
+		return false
+	}
+	mtime := mtimeMs(st)
+	if wal := statSafe(agyDB + "-wal"); wal != nil && mtimeMs(wal) > mtime {
+		mtime = mtimeMs(wal)
+	}
+	if mtime == w.agyMtime {
+		return false
+	}
+	rows, err := agyRows(agyDB, since)
+	if err != nil {
+		w.agyUnavailable = true
+		fmt.Fprintf(os.Stderr, "antigravity: %s not read (%v); Antigravity sessions are off until restart\n", agyDB, err)
+		return false
+	}
+	w.agyMtime = mtime
+	next := map[string]*Session{}
+	changed := len(rows) != len(w.agy)
+	for _, r := range rows {
+		s := agySession(r)
+		next[s.ID] = s
+		if old := w.agy[s.ID]; old == nil || *old != *s {
+			changed = true
+		}
+	}
+	w.agy = next
+	return changed
+}
+
 func (w *Watcher) Tick() {
 	w.mu.Lock()
 	now := time.Now().UnixMilli()
 	since := now - w.windowMs
 	changed := w.loadCodexIndex()
 	if w.loadGeminiProjects() {
+		changed = true
+	}
+	if w.loadAntigravity(since) {
 		changed = true
 	}
 
@@ -368,6 +429,12 @@ func (w *Watcher) Tick() {
 		}
 		if last < since {
 			delete(w.trackers, file)
+			changed = true
+		}
+	}
+	for id, s := range w.agy {
+		if s.LastEventAt < since {
+			delete(w.agy, id)
 			changed = true
 		}
 	}
@@ -425,6 +492,12 @@ func (w *Watcher) open(c candidate, st os.FileInfo) error {
 	session.Mtime = mtimeMs(st)
 	if c.agent == "gemini" {
 		session.GeminiProject = c.project
+	}
+	if c.agent == "claude" && c.parentID == "" {
+		if t := claudeCustomTitle(c.file); t != "" {
+			session.Title = t
+			session.titleLocked = true
+		}
 	}
 	apply := map[string]applyFunc{"claude": applyClaude, "codex": applyCodex, "gemini": applyGemini}[c.agent]
 	t := &tracker{session: session, offset: st.Size(), apply: apply, mtime: mtimeMs(st)}
@@ -511,6 +584,9 @@ func (w *Watcher) Sessions() []Session {
 		}
 		out = append(out, *s)
 	}
+	for _, s := range w.agy {
+		out = append(out, *s)
+	}
 	return out
 }
 
@@ -518,9 +594,9 @@ func (w *Watcher) Sessions() []Session {
 func (w *Watcher) Count() int {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return len(w.trackers)
+	return len(w.trackers) + len(w.agy)
 }
 
 func describeDirs() string {
-	return fmt.Sprintf("  %s\n  %s\n  %s", claudeDir, codexDir, geminiDir)
+	return fmt.Sprintf("  %s\n  %s\n  %s\n  %s", claudeDir, codexDir, geminiDir, agyDB)
 }

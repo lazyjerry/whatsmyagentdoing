@@ -444,6 +444,18 @@ func TestViewExposesPlatformAndPromptKind(t *testing.T) {
 	}
 }
 
+func TestViewExposesWorkspace(t *testing.T) {
+	now := time.Now().UnixMilli()
+	b, _ := json.Marshal(view(Session{Agent: "claude", ID: "x", Cwd: "/w/sub", Workspace: "/w", Tool: "agy"}, now, false))
+	if !strings.Contains(string(b), `"workspace":"/w"`) || !strings.Contains(string(b), `"cwd":"/w/sub"`) || !strings.Contains(string(b), `"tool":"agy"`) {
+		t.Errorf("json: %s", b)
+	}
+	b, _ = json.Marshal(view(Session{Agent: "codex", ID: "y"}, now, false))
+	if !strings.Contains(string(b), `"workspace":null`) || !strings.Contains(string(b), `"tool":null`) {
+		t.Errorf("unset workspace and tool must be null: %s", b)
+	}
+}
+
 func TestApiTimeAndServiceWorker(t *testing.T) {
 	s := newTestServer(t, newFakeSource(), Options{}, nil, nil)
 	before := time.Now().UnixMilli()
