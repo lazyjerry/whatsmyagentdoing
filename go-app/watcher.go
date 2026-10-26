@@ -247,7 +247,7 @@ type Watcher struct {
 func NewWatcher(hours float64) *Watcher {
 	return &Watcher{
 		windowMs:       int64(hours * 3600 * 1000),
-		interval:       time.Second,
+		interval:       PollInterval,
 		trackers:       map[string]*tracker{},
 		failed:         map[string]int64{},
 		codexNames:     map[string]string{},
@@ -396,7 +396,7 @@ func (d *dbSource) load(now, since int64) bool {
 	if err != nil {
 		// Transient as a rule: sqlite3 exits 14 (can't open) when the open
 		// races the writer's WAL checkpoint. Try again in a few seconds.
-		d.retryAt = now + 10_000
+		d.retryAt = now + DBRetry.Milliseconds()
 		return false
 	}
 	d.mtime = mtime
@@ -439,21 +439,21 @@ func (w *Watcher) Tick() {
 		changed = true
 	}
 
-	// Directory walk every 5s; stat known files every tick.
-	if now-w.lastScan > 5000 {
+	// Directory walk every RescanInterval; stat known files every tick.
+	if now-w.lastScan > RescanInterval.Milliseconds() {
 		w.lastScan = now
 		w.candidates = append(append(claudeFiles(), codexFiles(since)...), geminiFiles()...)
 	}
 
 	for _, c := range w.candidates {
 		// A log we can't read (permissions, deleted mid-read…) is skipped and
-		// retried a minute later; it must never take the server down.
+		// retried after UnreadableRetry; it must never take the server down.
 		if w.failed[c.file] > now {
 			continue
 		}
 		ch, err := w.track(c, since)
 		if err != nil {
-			w.failed[c.file] = now + 60000
+			w.failed[c.file] = now + UnreadableRetry.Milliseconds()
 			delete(w.trackers, c.file)
 			continue
 		}

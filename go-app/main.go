@@ -28,7 +28,7 @@ Usage: whatsmyagentdoing [options]
 
 Options:
   -p, --port <n>    Port to serve on (default 4545)
-  --hours <n>       Show sessions active in the last n hours (default 24)
+  --hours <n>       Show sessions active in the last n hours (default %g)
   --no-open         Don't open the browser
   --private         Hide prompts, replies and titles; show status only
   --json            Print one snapshot as JSON and exit
@@ -45,11 +45,11 @@ Reads (never writes):
 Override with CLAUDE_CONFIG_DIR / CODEX_HOME / GEMINI_CLI_HOME.
 The page and its assets are built into this binary; --update needs it to sit
 in its go-app/ source folder or skills/myoffice/bin/ inside a git clone (or
-WMAD_SRC pointing there).`, version, describeDirs())
+WMAD_SRC pointing there).`, version, DefaultWindowHours, describeDirs())
 }
 
 func parseArgs(argv []string, version string) Options {
-	o := Options{Port: 4545, Hours: 24, Open: true}
+	o := Options{Port: 4545, Hours: DefaultWindowHours, Open: true}
 	help := helpText(version)
 	num := func(s string) float64 {
 		n, err := strconv.ParseFloat(s, 64)

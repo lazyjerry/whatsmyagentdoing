@@ -150,13 +150,13 @@ func view(s Session, now int64, privacy bool) View {
 	quiet := now - last
 	status := s.Status
 	switch {
-	case status == "typing" && quiet > 45_000:
+	case status == "typing" && quiet > TypingDoneAfter.Milliseconds():
 		status = "done"
-	case status == "thinking" && quiet > 15*60_000:
+	case status == "thinking" && quiet > ThinkingIdleAfter.Milliseconds():
 		status = "idle"
-	case status == "tool" && quiet > 45*60_000:
+	case status == "tool" && quiet > ToolIdleAfter.Milliseconds():
 		status = "idle"
-	case (status == "waiting" || status == "error") && quiet > 2*3600_000:
+	case (status == "waiting" || status == "error") && quiet > AttentionIdleAfter.Milliseconds():
 		status = "idle"
 	}
 

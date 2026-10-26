@@ -25,9 +25,10 @@ func TestViewAgesSilentSessions(t *testing.T) {
 		{"thinking", 16 * time.Minute, "idle"},
 		{"tool", 44 * time.Minute, "tool"},
 		{"tool", 46 * time.Minute, "idle"},
-		{"waiting", 119 * time.Minute, "waiting"},
-		{"waiting", 121 * time.Minute, "idle"},
-		{"error", 121 * time.Minute, "idle"},
+		{"waiting", AttentionIdleAfter - time.Minute, "waiting"},
+		{"waiting", AttentionIdleAfter + time.Minute, "idle"},
+		{"error", AttentionIdleAfter - time.Minute, "error"},
+		{"error", AttentionIdleAfter + time.Minute, "idle"},
 		{"done", 48 * time.Hour, "done"}, // done never ages
 	}
 	for _, c := range cases {

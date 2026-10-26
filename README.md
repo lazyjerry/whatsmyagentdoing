@@ -139,6 +139,32 @@ skill 的 `skills/myoffice/bin/whatsmyagentdoing` 與直接建出的 `go-app/wha
 
 **更新：** 頁面右下角有 **檢查更新** 按鈕，滑鼠移上去顯示目前版本號，旁邊的時鐘是主機目前時間（由 `sw.js` 這個 service worker 對 `/api/time` 校準，所有分頁共用同一個時間差）；只有按下按鈕時才會抓一次本 repo main 分支的 `skills/myoffice/package.json`，不會自動檢查，有新版時改顯示 **Update** 按鈕。要改成自動（頁面載入與每半小時、CLI 啟動時都檢查），把 `go-app/config.go` 的 `AutoUpdateCheck` 改成 `true`；設定 `WMAD_NO_UPDATE_CHECK=1` 則兩種模式都不檢查。按下按鈕——或執行 `--update`、或說 `/myoffice update`——會在 clone 執行 `git pull`、重新同步 `static/` 並重新 `go build`（需要 Go），只在執行檔還放在 clone 的 `go-app/` 或 `skills/myoffice/bin/` 裡時可用。
 
+## 設定
+
+可調的設定都是 `go-app/config.go` 裡的常數，改完要重建才生效：在 clone 根目錄跑 `scripts/start.sh`（重建、複製進 skill 的 `bin/`、重啟儀表板），或 `scripts/build.sh && scripts/installSkill.sh` 再自行重啟。
+
+**狀態時鐘。** Log 只記完成的區塊，所以一個突然沒動靜的 session 要靠時間判定它怎麼了；下表是「距最後一個事件多久」就改判：
+
+| 常數 | 預設 | 意思 |
+|---|---|---|
+| `TypingDoneAfter` | 45 秒 | 回覆區塊落地後沒有後續，視為這一輪結束 → 已完成 |
+| `ThinkingIdleAfter` | 15 分鐘 | 「思考中」太久沒動，視為中途被關掉 → 閒置（下班） |
+| `ToolIdleAfter` | 45 分鐘 | 工具呼叫一直沒回報 → 閒置 |
+| `AttentionIdleAfter` | 5 小時 | 「等你回應」與「錯誤」的人物留在辦公室揮手多久 → 閒置 |
+
+**掃描與更新。**
+
+| 常數 | 預設 | 意思 |
+|---|---|---|
+| `DefaultWindowHours` | 24 | `--hours` 的預設值，超過這段時間沒活動的 session 不顯示 |
+| `PollInterval` | 1 秒 | 多久 stat 一次已知的 log 檔與 SQLite 資料庫 |
+| `RescanInterval` | 5 秒 | 多久重新走一次 log 目錄找新檔案 |
+| `UnreadableRetry` | 1 分鐘 | 讀不到的 log 檔（權限、讀到一半被刪）多久後再試 |
+| `DBRetry` | 10 秒 | SQLite 讀取失敗（例如撞上 WAL checkpoint）多久後再試 |
+| `UpdateCheckEvery` | 30 分鐘 | 一次版本檢查的結果沿用多久才再問 GitHub（頁面自動檢查的間隔另寫在 `index.html`，也是 30 分鐘） |
+
+**對外連線。** `Repo`、`Branch`、`AutoUpdateCheck` 同樣在這個檔案，見上方「更新」段。
+
 ## 運作原理
 
 不需要 hook、不需要設定、不需要 API key。這些工具本來就會在工作時把每則訊息與工具呼叫 append 到 JSONL 檔：

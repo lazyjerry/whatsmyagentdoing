@@ -30,8 +30,6 @@ import (
 	"time"
 )
 
-const checkEvery = 30 * time.Minute
-
 type Updater struct {
 	mu        sync.Mutex
 	latest    string
@@ -102,7 +100,7 @@ func (u *Updater) CheckLatest(force bool) string {
 		return v
 	}
 	u.mu.Lock()
-	if !force && u.latest != "" && time.Since(u.checkedAt) < checkEvery {
+	if !force && u.latest != "" && time.Since(u.checkedAt) < UpdateCheckEvery {
 		defer u.mu.Unlock()
 		return u.latest
 	}
