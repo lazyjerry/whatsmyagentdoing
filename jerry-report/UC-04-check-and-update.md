@@ -16,7 +16,7 @@
 1. 瀏覽器載入時 `loadVersion()` → GET `/api/version`；`AUTO_UPDATE_CHECK` 關閉（預設）時伺服器只回已知資訊，不連外，使用者按「檢查更新」才 GET `/api/version?check=1`。
 2. 帶 `check=1` 時伺服器 `checkLatest(true)`：https GET GitHub raw 的 `package.json`（逾時 4 秒、上限 64 KB），取 `version`；同時多個請求共用同一次抓取。
 3. 回 `{version, latest, updateAvailable, canUpdate, auto}`；`updateAvailable` 為語意版本比較，`canUpdate` 為是否存在 `.git`。
-4. `renderVersion()`：右下角沒有新版資訊時顯示「檢查更新」按鈕，目前版本（`v0.3.0`）是按鈕 hover／focus 時的提示（`data-ver`），不另佔位置；按後無新版顯示「已是最新版」、抓不到顯示「檢查失敗」，4 秒後還原；有新版且可更新時顯示「⬆ Update to vX」按鈕與工具列右側的「New version」按鈕；有新版但不是 git clone 則提示「用 git pull 更新」。按鈕右邊是主機時鐘（`sw.js` 對 `/api/time` 校準）。
+4. `renderVersion()`：右下角沒有新版資訊時顯示「檢查更新」按鈕，目前版本（`v0.4.0`）是按鈕 hover／focus 時的提示（`data-ver`），不另佔位置；按後無新版顯示「已是最新版」、抓不到顯示「檢查失敗」，4 秒後還原；有新版且可更新時顯示「⬆ Update to vX」按鈕與工具列右側的「New version」按鈕；有新版但不是 git clone 則提示「用 git pull 更新」。按鈕右邊是主機時鐘（`sw.js` 對 `/api/time` 校準）。
 
 ### 從頁面更新
 
