@@ -16,7 +16,7 @@
 |---|---|
 | [`skills/myoffice/`](skills/myoffice/) | skill 本體：`SKILL.md`、網頁與 3D 模型的真源、建好後放進 `bin/` 的 Go 執行檔（不進版控）。可被 ai-global 安裝。 |
 | [`go-app/`](go-app/) | Go 後端原始碼：skill 呼叫的執行檔從這裡建出，網頁與模型內嵌在執行檔裡，不依賴本倉庫其他目錄。 |
-| [`scripts/`](scripts/) | `build.sh` 重建執行檔、`installSkill.sh` 把它複製進 skill、`start.sh` 兩者做完再重啟儀表板。 |
+| [`scripts/`](scripts/) | `build.sh` 重建執行檔、`installSkill.sh` 把它複製進 skill、`start.sh` 兩者做完再重啟儀表板、`stop.sh` 停掉執行中的儀表板。 |
 | [`docs/`](docs/) | 示範動畫、資安檢視報告、施工筆記。 |
 | [`jerry-report/`](jerry-report/) | 原 Node 版 skill 的系統分析（歷史文件）；現行 Go 版的在 [`go-app/jerry-report/`](go-app/jerry-report/)。 |
 
@@ -64,6 +64,7 @@ Go 版把網頁、3D 模型、場景目錄與版本號都用 `go:embed` 包進�
 > scripts/build.sh            # 同步 static/ 再 go build，產物在 go-app/whatsmyagentdoing
 > scripts/installSkill.sh     # 複製到 skills/myoffice/bin/，SKILL.md 呼叫的就是這份
 > scripts/start.sh            # 上面兩步做完再（重新）啟動儀表板；執行檔內嵌前端，改完一定要重啟才看得到
+> scripts/stop.sh             # 停掉執行中的儀表板，確認埠已釋放才結束；--port 指定埠
 > ```
 >
 > `scripts/build.sh` 找不到 `go` 會印出安裝方式並以非零結束。`static/` 是內嵌副本，真源在 `skills/myoffice/`；前端有改動就重跑建置。
