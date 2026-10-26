@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -237,7 +238,8 @@ type Watcher struct {
 	codexIndexMtime     int64
 	agy                 map[string]*Session // conversation id -> Antigravity row (see antigravity.go)
 	agyMtime            int64               // db + WAL mtime at the last successful read
-	agyUnavailable      bool                // sqlite3 missing or the db unreadable: logged once, then skipped
+	agyRetryAt          int64               // a read that failed (e.g. caught mid-checkpoint) is retried after this
+	agyUnavailable      bool                // sqlite3 missing: logged once, then skipped for good
 	lastScan            int64
 	candidates          []candidate
 	changes             chan struct{}
@@ -352,8 +354,8 @@ func (w *Watcher) loadGeminiProjects() bool {
 
 // loadAntigravity re-reads conversation_summaries.db when it (or its WAL)
 // changed; returns true when any session differs from the last read.
-func (w *Watcher) loadAntigravity(since int64) bool {
-	if w.agyUnavailable {
+func (w *Watcher) loadAntigravity(now, since int64) bool {
+	if w.agyUnavailable || w.agyRetryAt > now {
 		return false
 	}
 	st := statSafe(agyDB)
@@ -368,9 +370,15 @@ func (w *Watcher) loadAntigravity(since int64) bool {
 		return false
 	}
 	rows, err := agyRows(agyDB, since)
-	if err != nil {
+	if errors.Is(err, errAgyNoSqlite) {
 		w.agyUnavailable = true
-		fmt.Fprintf(os.Stderr, "antigravity: %s not read (%v); Antigravity sessions are off until restart\n", agyDB, err)
+		fmt.Fprintf(os.Stderr, "antigravity: sqlite3 not found; Antigravity sessions are off (install sqlite3 and restart)\n")
+		return false
+	}
+	if err != nil {
+		// Transient as a rule: sqlite3 exits 14 (can't open) when the open
+		// races the writer's WAL checkpoint. Try again in a few seconds.
+		w.agyRetryAt = now + 10_000
 		return false
 	}
 	w.agyMtime = mtime
@@ -395,7 +403,7 @@ func (w *Watcher) Tick() {
 	if w.loadGeminiProjects() {
 		changed = true
 	}
-	if w.loadAntigravity(since) {
+	if w.loadAntigravity(now, since) {
 		changed = true
 	}
 

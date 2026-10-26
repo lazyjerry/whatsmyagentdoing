@@ -13,6 +13,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"os/exec"
 	"path/filepath"
@@ -23,6 +24,8 @@ import (
 var (
 	agyDB     = filepath.Join(geminiHomes[0], "antigravity", "conversation_summaries.db")
 	agyBinary = "sqlite3" // overridable in tests
+
+	errAgyNoSqlite = errors.New("sqlite3 not found")
 )
 
 // agyRow is one conversation_summaries row as `sqlite3 -json` prints it.
@@ -48,10 +51,14 @@ const agySQL = `select conversation_id, title, preview, step_count, last_modifie
 // `mode=ro` (not `immutable`) so rows an active run has written to the WAL
 // are seen.
 func agyRows(db string, sinceMs int64) ([]agyRow, error) {
+	bin, err := exec.LookPath(agyBinary)
+	if err != nil {
+		return nil, errAgyNoSqlite
+	}
 	since := time.UnixMilli(sinceMs).UTC().Format("2006-01-02 15:04:05")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, agyBinary, "-json", "file:"+db+"?mode=ro", strings.Replace(agySQL, "%s", since, 1))
+	cmd := exec.CommandContext(ctx, bin, "-json", "file:"+db+"?mode=ro", strings.Replace(agySQL, "%s", since, 1))
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err

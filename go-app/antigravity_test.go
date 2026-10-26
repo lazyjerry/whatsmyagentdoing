@@ -86,6 +86,28 @@ func TestAgyUnreadableDbIsSkippedOnce(t *testing.T) {
 	}
 }
 
+func TestAgyReadErrorIsRetriedLater(t *testing.T) {
+	db := agyFixture(t)
+	writeFile(t, db, "not a database")
+	w := NewWatcher(24)
+	w.Tick()
+	if w.agyUnavailable || w.agyRetryAt == 0 {
+		t.Fatalf("a failed read must back off, not switch the source off: unavailable=%v retryAt=%d", w.agyUnavailable, w.agyRetryAt)
+	}
+	w.agyRetryAt = 0
+	// Fixed in the meantime: the next tick reads it.
+	if err := os.Remove(db); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("sqlite3", db, `create table conversation_summaries (conversation_id text primary key, title text not null default "", preview text not null default "", step_count integer not null default 0, last_modified_time datetime not null, workspace_uris text not null, status text not null default "", source text not null default "", parent_conversation_id text not null default "", nesting_depth integer not null default 0, not_fully_idle numeric not null default false, killed numeric not null default false, last_user_input_time datetime not null); insert into conversation_summaries values ('x','','p',1,'`+agyStamp(0)+`','[]','CASCADE_RUN_STATUS_IDLE','','',0,0,0,'`+agyStamp(0)+`');`).CombinedOutput(); err != nil {
+		t.Fatalf("sqlite3: %v\n%s", err, out)
+	}
+	w.Tick()
+	if w.Count() != 1 {
+		t.Fatalf("after the db became readable: count=%d", w.Count())
+	}
+}
+
 func TestAgyHelpers(t *testing.T) {
 	if got := agyTime("2026-10-26 04:00:37.785627+00:00"); got != 1792987237785 {
 		t.Errorf("agyTime with fraction = %d", got)
