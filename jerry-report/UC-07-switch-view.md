@@ -5,7 +5,7 @@
 | 主要參與者 | 使用者 |
 | 次要參與者 | 瀏覽器（WebGL、動態 import）、伺服器（提供 `/office3d.js`、`/assets/kenney/*.glb`） |
 | 前置條件 | 頁面已載入（UC-02） |
-| 觸發 | 工具列 Office／List、2D／3D 按鈕；URL `?view=&quality=`；偏好同步（UC-14） |
+| 觸發 | 工具列 Office／List、設定面板的 2D／3D 按鈕；URL `?view=&quality=`；偏好同步（UC-14） |
 | 後置條件 | 畫面以選定的視圖與畫質呈現；偏好已存入 localStorage |
 | 相關程式 | `public/index.html`（`viewSeg`、`qualSeg`、`render`、`makeOffice`、`setLoading`）、`public/office.js`、`web/office3d.js`、`src/server.js`（`/assets/`） |
 
@@ -18,7 +18,7 @@
 
 ### 切換 2D／3D
 
-3. 使用者按 `qualSeg`；`state.quality` 更新並存檔，呼叫 `makeOffice()`。
+3. 使用者在設定面板按 `qualSeg`（只在辦公室檢視出現，預設 3D）；`state.quality` 更新並存檔，呼叫 `makeOffice()`。
 4. `makeOffice()` 計算 `kind`：`mid` 或 `high:<scene>`（scene 只在已安裝時生效，否則 `office`）；與目前相同就不重建。
 5. 顯示載入遮罩（「Loading 3D office…」或「Setting up the office…」）。
 6. 3D：`await import('/office3d.js')` 取得 `Office3D`（three.js bundle 約 180 KB gzip，只在此時下載）；若 scene 非 office，再 `fetch('/scenes/<id>/manifest.json')`。

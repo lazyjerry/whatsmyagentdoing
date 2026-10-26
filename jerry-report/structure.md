@@ -221,9 +221,10 @@ stateDiagram-v2
 | 偏好鍵（localStorage `wmad.*`） | 預設 | 可選值 |
 |---|---|---|
 | view | office | office、list |
-| quality | mid | mid（2D）、high（3D） |
+| quality | high | mid（2D）、high（3D） |
 | scene | office | office 或已安裝場景 id |
-| agent | all | all、claude、codex、gemini |
+| hiddenAgents | [] | 取消勾選的 agent（claude、codex、gemini、opencode）；空陣列＝全選 |
+| hiddenPlatforms | [] | 取消勾選的平台（vscode、cli、other）；空陣列＝全選 |
 | showSub | false | 顯示子代理 |
 | showNeedsYou、showError、showWorking、showFinished | true | 各狀態組是否顯示（頁首計數 chip 與設定面板共用） |
 | showIdle | false | 顯示 idle（同上，預設關） |

@@ -68,8 +68,6 @@
   .seg button { border: 0; background: none; color: var(--muted); padding: 5px 12px; border-radius: 5px; font: inherit; font-size: 12.5px; cursor: pointer; }
   .seg button:hover:not(.on) { color: var(--ink); background: var(--bg); }
   .seg button.on { background: var(--ink); color: var(--bg); }
-  #qualSeg { border-color: transparent; background: transparent; }
-  #qualSeg button.on { background: var(--line); color: var(--ink); }
   .seg button small { opacity: .65; font-size: 11px; }
   label.tog { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--muted); cursor: pointer; user-select: none; }
   .btn { border: 1px solid var(--line); background: var(--panel); color: var(--muted); padding: 5px 11px; border-radius: 8px; font: inherit; font-size: 12.5px; cursor: pointer; }
@@ -85,12 +83,13 @@
   .settings-panel { position: absolute; z-index: 20; right: 0; top: calc(100% + 10px); width: min(360px, calc(100vw - 32px)); max-height: calc(100dvh - 180px); overflow-y: auto; overscroll-behavior: contain; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 12px 40px #0003; }
   .setting-group + .setting-group { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
   .setting-label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 9px; }
-  #sceneGroup[hidden] + .setting-group { margin-top: 0; padding-top: 0; border-top: 0; }
+  #officeGroup[hidden] + .setting-group { margin-top: 0; padding-top: 0; border-top: 0; }
   #sceneSeg { display: grid; grid-template-columns: 1fr 1fr; border: 0; padding: 0; gap: 6px; }
   #sceneSeg button { text-align: left; padding: 8px 10px; background: var(--bg); }
   #sceneSeg button.on { background: var(--line); color: var(--ink); box-shadow: inset 0 0 0 1px var(--faint); }
-  #agentSeg { display: flex; }
-  #agentSeg button { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 8px 6px; }
+  #qualSeg { display: flex; }
+  #qualSeg button { flex: 1; }
+  .scene-label { margin-top: 14px; }
   .setting-toggles { display: grid; gap: 12px; margin-top: 14px; }
   .setting-toggles .tog { color: var(--ink); gap: 8px; }
   .status-label { margin-top: 14px; margin-bottom: 0; }
@@ -136,9 +135,7 @@
   .meta dt { color: var(--faint); white-space: nowrap; }
   .meta dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
   .meta .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
-  #platformSeg { display: flex; margin-top: 8px; }
-  #platformSeg button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
-  #platformSeg .hair { width: 10px; height: 10px; border-radius: 50%; background: var(--hair, transparent); flex: none; }
+  #platformToggles .hair { width: 10px; height: 10px; border-radius: 50%; background: var(--hair, transparent); flex: none; }
   .project { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .time { margin-left: auto; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; }
   .title { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -226,7 +223,7 @@
   body.pip .wrap { height: calc(100dvh - 16px); display: flex; flex-direction: column; }
   body.pip header { gap: 6px; margin-bottom: 8px; flex: none; }
   body.pip .newver, body.pip #legend, body.pip .ver,
-  body.pip .controls > :not(#viewSeg):not(#qualSeg) { display: none !important; }
+  body.pip .controls > :not(#viewSeg) { display: none !important; }
   body.pip .controls { width: auto; padding: 0; border: 0; }
   body.pip .chip { padding: 2px 6px; font-size: 11px; }
   body.pip .summary { gap: 4px; width: auto; margin-left: 0; }
@@ -247,33 +244,34 @@
         <button data-v="office" data-t="office"></button>
         <button data-v="list" data-t="list"></button>
       </div>
-      <div class="seg" id="qualSeg">
-        <button data-v="mid" data-t="qMid"></button>
-        <button data-v="high" data-t="qHigh"></button>
-      </div>
       <button class="btn" id="pipBtn" hidden></button>
       <details class="settings" id="settingsMenu">
         <summary class="btn" aria-controls="settingsPanel"><span data-t="settings"></span><span class="filter-active" id="activeFilter" hidden></span></summary>
         <div class="settings-panel" id="settingsPanel">
-          <div class="setting-group" id="sceneGroup">
-            <span class="setting-label" id="sceneLabel" data-t="scene"></span>
-            <div class="seg" id="sceneSeg" role="group" aria-labelledby="sceneLabel"></div>
+          <div class="setting-group" id="officeGroup">
+            <span class="setting-label" id="qualLabel" data-t="officeView"></span>
+            <div class="seg" id="qualSeg" role="group" aria-labelledby="qualLabel">
+              <button data-v="mid" data-t="qMid"></button>
+              <button data-v="high" data-t="qHigh"></button>
+            </div>
+            <div id="sceneGroup">
+              <span class="setting-label scene-label" id="sceneLabel" data-t="scene"></span>
+              <div class="seg" id="sceneSeg" role="group" aria-labelledby="sceneLabel"></div>
+            </div>
           </div>
           <div class="setting-group">
             <span class="setting-label" id="filterLabel" data-t="agents"></span>
-            <div class="seg" id="agentSeg" role="group" aria-labelledby="filterLabel">
-              <button data-v="all" class="on" data-t="all"></button>
-              <button data-v="claude"><img class="agent-logo" src="/assets/agents/claude.png" alt="">Claude</button>
-              <button data-v="codex"><img class="agent-logo" src="/assets/agents/codex.png" alt="">Codex</button>
-              <button data-v="gemini"><img class="agent-logo" src="/assets/agents/gemini.png" alt="">Gemini</button>
-              <button data-v="opencode"><img class="agent-logo" src="/assets/agents/opencode.png" alt="">OpenCode</button>
+            <div class="setting-toggles status-toggles" id="agentToggles" role="group" aria-labelledby="filterLabel">
+              <label class="tog"><input type="checkbox" data-v="claude"> <img class="agent-logo" src="/assets/agents/claude.png" alt="">Claude</label>
+              <label class="tog"><input type="checkbox" data-v="codex"> <img class="agent-logo" src="/assets/agents/codex.png" alt="">Codex</label>
+              <label class="tog"><input type="checkbox" data-v="gemini"> <img class="agent-logo" src="/assets/agents/gemini.png" alt="">Gemini</label>
+              <label class="tog"><input type="checkbox" data-v="opencode"> <img class="agent-logo" src="/assets/agents/opencode.png" alt="">OpenCode</label>
             </div>
-            <span class="setting-label" id="platformLabel" data-t="platform"></span>
-            <div class="seg" id="platformSeg" role="group" aria-labelledby="platformLabel">
-              <button data-v="all" class="on" data-t="all"></button>
-              <button data-v="vscode"><i class="hair" data-hair="vscode"></i>VS Code</button>
-              <button data-v="cli"><i class="hair" data-hair="cli"></i>CLI</button>
-              <button data-v="other" data-t="other"></button>
+            <span class="setting-label status-label" id="platformLabel" data-t="platform"></span>
+            <div class="setting-toggles status-toggles" id="platformToggles" role="group" aria-labelledby="platformLabel">
+              <label class="tog"><input type="checkbox" data-v="vscode"> <i class="hair" data-hair="vscode"></i>VS Code</label>
+              <label class="tog"><input type="checkbox" data-v="cli"> <i class="hair" data-hair="cli"></i>CLI</label>
+              <label class="tog"><input type="checkbox" data-v="other"> <span data-t="other"></span></label>
             </div>
             <span class="setting-label status-label" id="statusLabel" data-t="showStatuses"></span>
             <div class="setting-toggles status-toggles" id="statusToggles" role="group" aria-labelledby="statusLabel">
@@ -365,7 +363,9 @@ const store = (() => {
   return { get, set };
 })();
 
-const PREF_DEFAULTS = { view: 'office', quality: 'mid', scene: 'office', agent: 'all', platform: 'all', showSub: false, showAgent: true, lang: 'auto',
+const PREF_DEFAULTS = { view: 'office', quality: 'high', scene: 'office', showSub: false, showAgent: true, lang: 'auto',
+  // Agents and platforms are multi-select; storing what is unchecked keeps a newly added agent visible.
+  hiddenAgents: [], hiddenPlatforms: [],
   // One switch per status group (the counts in the header and the settings panel share them).
   showNeedsYou: true, showError: true, showWorking: true, showFinished: true, showIdle: false };
 function validPreference(k, v) {
@@ -373,8 +373,8 @@ function validPreference(k, v) {
   if (typeof PREF_DEFAULTS[k] === 'boolean') return typeof v === 'boolean';
   if (k === 'view') return ['office', 'list'].includes(v);
   if (k === 'quality') return ['mid', 'high'].includes(v);
-  if (k === 'agent') return ['all', ...Object.keys(OFFICE_AGENT_BADGES)].includes(v);
-  if (k === 'platform') return ['all', 'vscode', 'cli', 'other'].includes(v);
+  if (k === 'hiddenAgents') return Array.isArray(v) && v.every((x) => Object.hasOwn(OFFICE_AGENT_BADGES, x));
+  if (k === 'hiddenPlatforms') return Array.isArray(v) && v.every((x) => ['vscode', 'cli', 'other'].includes(x));
   if (k === 'lang') return v === 'auto' || Object.hasOwn(I18N, v);
   return typeof v === 'string' && /^[a-z0-9-]+$/.test(v);
 }
@@ -415,10 +415,10 @@ const AGENT_NAME = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', opencod
 const PLATFORM_NAME = { vscode: 'VS Code', cli: 'CLI', sdk: 'SDK', desktop: 'Desktop' };
 const PROMPT_ICON = { command: '⌨️', notification: '🔔' };
 const PROMPT_KIND_KEY = { command: 'kindCommand', notification: 'kindNotification' };
+const onAgent = (s) => !state.hiddenAgents.includes(s.agent);
 function onPlatform(s) {
-  if (state.platform === 'all') return true;
-  if (state.platform === 'other') return s.platform !== 'vscode' && s.platform !== 'cli';
-  return s.platform === state.platform;
+  const p = s.platform === 'vscode' || s.platform === 'cli' ? s.platform : 'other';
+  return !state.hiddenPlatforms.includes(p);
 }
 // Header counts, list sections and the show/hide switches all follow this order.
 const GROUPS = [
@@ -538,7 +538,7 @@ function card(s, now, detail = false) {
 
 function visible() {
   return state.data.sessions.filter((s) =>
-    (state.agent === 'all' || s.agent === state.agent) && onPlatform(s) &&
+    onAgent(s) && onPlatform(s) &&
     (state.showSub || !s.subagent) &&
     statusShown(s.status));
 }
@@ -546,7 +546,7 @@ function visible() {
 function render() {
   const now = Date.now() - state.skew;
   const list = visible();
-  const all = state.data.sessions.filter((s) => (state.agent === 'all' || s.agent === state.agent) && onPlatform(s) && (state.showSub || !s.subagent));
+  const all = state.data.sessions.filter((s) => onAgent(s) && onPlatform(s) && (state.showSub || !s.subagent));
 
   const count = (f) => all.filter((s) => f(s.status)).length;
   // The counts always include hidden groups, so a switched-off group still shows how many it hides.
@@ -657,15 +657,14 @@ document.getElementById('viewSeg').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
   state.view = b.dataset.v; store.set('view', state.view); hideTip(); syncControls(); render();
 });
-document.getElementById('agentSeg').addEventListener('click', (e) => {
-  const b = e.target.closest('button'); if (!b) return;
-  state.agent = b.dataset.v; store.set('agent', state.agent); syncControls(); render();
-});
-document.getElementById('platformSeg').addEventListener('click', (e) => {
-  const b = e.target.closest('button'); if (!b) return;
-  state.platform = b.dataset.v; store.set('platform', state.platform); syncControls(); render();
-});
-document.querySelectorAll('#platformSeg .hair').forEach((el) => el.style.setProperty('--hair', OFFICE_PLATFORM_HAIR[el.dataset.hair][0]));
+for (const [id, key] of [['agentToggles', 'hiddenAgents'], ['platformToggles', 'hiddenPlatforms']]) {
+  document.getElementById(id).addEventListener('change', (e) => {
+    const c = e.target.closest('input[data-v]'); if (!c) return;
+    state[key] = c.checked ? state[key].filter((v) => v !== c.dataset.v) : [...state[key], c.dataset.v];
+    store.set(key, state[key]); syncControls(); render();
+  });
+}
+document.querySelectorAll('#platformToggles .hair').forEach((el) => el.style.setProperty('--hair', OFFICE_PLATFORM_HAIR[el.dataset.hair][0]));
 const showSub = document.getElementById('showSub');
 const showAgent = document.getElementById('showAgent');
 showSub.addEventListener('change', () => { state.showSub = showSub.checked; store.set('showSub', state.showSub); render(); });
@@ -686,15 +685,17 @@ document.getElementById('statusToggles').addEventListener('change', (e) => {
 
 const notifyBtn = document.getElementById('notify');
 function syncControls() {
-  document.querySelectorAll('#agentSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.agent));
-  document.querySelectorAll('#platformSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.platform));
+  document.querySelectorAll('#agentToggles input').forEach((c) => (c.checked = !state.hiddenAgents.includes(c.dataset.v)));
+  document.querySelectorAll('#platformToggles input').forEach((c) => (c.checked = !state.hiddenPlatforms.includes(c.dataset.v)));
   document.querySelectorAll('#viewSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.view));
   document.querySelectorAll('#qualSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.quality));
-  document.getElementById('qualSeg').style.display = state.view === 'office' ? '' : 'none';
-  document.getElementById('sceneGroup').hidden = state.view !== 'office' || state.quality !== 'high';
+  document.getElementById('officeGroup').hidden = state.view !== 'office';
+  document.getElementById('sceneGroup').hidden = state.quality !== 'high';
+  // Next to "Settings": what is still checked, for whichever of the two filters is narrowed.
+  const checked = (names, hidden) => (hidden.length ? Object.keys(names).filter((k) => !hidden.includes(k)).map((k) => names[k]).join('/') || '–' : '');
   const activeFilter = document.getElementById('activeFilter');
-  activeFilter.hidden = state.agent === 'all' && state.platform === 'all';
-  activeFilter.textContent = [AGENT_NAME[state.agent], PLATFORM_NAME[state.platform] || (state.platform === 'other' ? L.other : '')].filter(Boolean).join(' · ');
+  activeFilter.hidden = !state.hiddenAgents.length && !state.hiddenPlatforms.length;
+  activeFilter.textContent = [checked(AGENT_NAME, state.hiddenAgents), checked({ vscode: 'VS Code', cli: 'CLI', other: L.other }, state.hiddenPlatforms)].filter(Boolean).join(' · ');
   document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', b.classList.contains('on')));
   showSub.checked = state.showSub;
   showAgent.checked = state.showAgent;

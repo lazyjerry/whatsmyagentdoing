@@ -88,7 +88,7 @@ flowchart LR
 | UC-04 | 檢查新版並更新 | 使用者／AI Agent | 頁面 Update 鈕、`--update`、`/myoffice update` | `update.js`、`/api/version`、`/api/update` | [UC-04](UC-04-check-and-update.md) |
 | UC-05 | 取得 JSON 快照 | AI Agent | `--json` | `snapshot()` | [UC-05](UC-05-json-snapshot.md) |
 | UC-06 | Demo 模式 | 使用者 | `--demo` | `DemoWatcher` | [UC-06](UC-06-demo-mode.md) |
-| UC-07 | 切換視圖與畫質 | 使用者 | 工具列 List／Office、2D／3D | `render()`、`makeOffice()` | [UC-07](UC-07-switch-view.md) |
+| UC-07 | 切換視圖與畫質 | 使用者 | 工具列 List／Office、設定的 2D／3D | `render()`、`makeOffice()` | [UC-07](UC-07-switch-view.md) |
 | UC-08 | 管理 3D 場景 | 使用者／AI Agent | 場景按鈕、`--scenes`、`--scene`、`--remove-scene` | `scenes.js`、`/api/scenes*` | [UC-08](UC-08-manage-scenes.md) |
 | UC-09 | 子母畫面 | 使用者 | Pop out 鈕 | `OfficePopout` | [UC-09](UC-09-popout.md) |
 | UC-10 | 選擇介面語言 | 使用者 | 自動／🌐 選單 | `promptLanguage()`、`chooseLang()` | [UC-10](UC-10-language.md) |

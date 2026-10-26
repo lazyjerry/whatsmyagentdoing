@@ -75,7 +75,13 @@ async function drawnLogos(target) {
    window.Notification=class {static permission='granted';constructor(title,options){window.__notifications.push({title,options})}};
   },sessions);
   context.on('page',p=>p.on('pageerror',e=>errors.push(String(e))));
-  const page=await context.newPage();await page.goto(base);await stable(page);
+  const page=await context.newPage();await page.goto(base);await page.waitForFunction(()=>officeKind!==null);
+  assert.equal(await page.evaluate(()=>state.quality),'high');
+  assert.equal(await page.locator('header > .controls > #qualSeg').count(),0);
+  assert.equal(await page.locator('#settingsPanel #qualSeg').count(),1);
+  check('2D/3D lives in the settings panel and defaults to 3D');
+  // The 2D checks below run first; the 3D ones switch over later.
+  await page.goto(base+'/?quality=mid');await stable(page);
   assert.match(await page.title(),/Agents Office$/);
   assert.equal(await page.locator('h1').count(),0);
   assert.equal(await page.evaluate(()=>document.querySelector('#summary').getBoundingClientRect().left>document.querySelector('.controls').getBoundingClientRect().right),true);
@@ -113,22 +119,25 @@ async function drawnLogos(target) {
   assert.equal(await page.evaluate(()=>office.sublabel({platform:'vscode'})),'VS Code');
   assert.equal(await page.evaluate(()=>office.sublabel({})),'');
   assert.equal(await page.evaluate(()=>[...office.people.values()].every(p=>OFFICE_PLATFORM_HAIR[p.s.platform].includes(p.hair))),true);
-  await openSettings(page);await page.click('#platformSeg [data-v=vscode]');
+  await openSettings(page);
+  assert.equal(await page.locator('#agentToggles input:checked, #platformToggles input:checked').count(),7);
+  assert.equal(await page.locator('#agentToggles input[data-v=all], #platformToggles input[data-v=all]').count(),0);
+  await page.uncheck('#platformToggles input[data-v=cli]');await page.uncheck('#platformToggles input[data-v=other]');
   assert.equal(await page.locator('#activeFilter').innerText(),'VS Code');
   await page.click('#viewSeg [data-v=list]');
   assert.deepEqual(await page.locator('.card .platform').allInnerTexts(),['VS Code','VS Code']);
-  await openSettings(page);await page.click('#platformSeg [data-v=other]');
+  await openSettings(page);await page.check('#platformToggles input[data-v=other]');await page.uncheck('#platformToggles input[data-v=vscode]');
   assert.deepEqual(await page.locator('.card .platform').allInnerTexts(),['SDK']);
   await page.reload();await page.waitForFunction(()=>state.loaded);
   await page.evaluate(s=>{__events.close();onData({now:Date.now(),sessions:s})},sessions);
   assert.deepEqual(await page.locator('.card .platform').allInnerTexts(),['SDK']);
-  await openSettings(page);await page.click('#platformSeg [data-v=all]');
+  await openSettings(page);await page.check('#platformToggles input[data-v=vscode]');await page.check('#platformToggles input[data-v=cli]');
   assert.equal(await page.locator('#activeFilter').isVisible(),false);
   assert.equal(await page.locator('.card').count(),6);
   assert.deepEqual(await page.locator('.card .kind').allInnerTexts(),['🔔 Background task','⌨️ Slash command']);
   assert.equal(await page.locator('.card .meta').count(),0);
   await page.click('#viewSeg [data-v=office]');await stable(page);
-  check('platform filter narrows the list and persists, cards name the platform and prompt kind, 2D hair and labels follow platform and prompt kind');
+  check('platform multi-select narrows the list and persists, cards name the platform and prompt kind, 2D hair and labels follow platform and prompt kind');
   await page.evaluate(()=>officeOpts.onHover(state.data.sessions.find(s=>s.key==='codex:two'),{x:40,y:40},true));
   assert.equal(await page.locator('#tip .kind').innerText(),'🔔 Background task');
   assert.deepEqual(await page.locator('#tip .meta dt').allInnerTexts(),['Folder','Last activity','Session']);
@@ -156,7 +165,7 @@ async function drawnLogos(target) {
   assert.equal(await page.locator('#agentLegend').isVisible(),false);
   await page.reload();await stable(page);assert.equal(await page.locator('#showAgent').isChecked(),false);
   await openSettings(page);await page.check('#showAgent');check('badge toggle hides markers and legend and persists across reload');
-  await page.click('#qualSeg [data-v=high]');
+  await openSettings(page);await page.click('#qualSeg [data-v=high]');
   await page.waitForFunction(()=>officeKind==='high:office'&&office?.loaded&&office.framesShown>4,{},{timeout:30000});
   assert.deepEqual([...new Set(await badges(page))].sort(),['Cl','Cx','G','Oc']);
   await screenshot(page, 'office-3d');
@@ -164,6 +173,20 @@ async function drawnLogos(target) {
   check('3D renders the same official provider logos');
   assert.deepEqual(await page.evaluate(()=>[...office.people.values()].map(p=>[p.s.platform,office.modelName(p).split('-')[0]]).filter(([pf])=>pf==='vscode'||pf==='cli').map(([pf,g])=>`${pf}:${g}`).sort()),['cli:male','cli:male','cli:male','vscode:female','vscode:female']);
   check('3D picks the model group from the platform');
+  // Grow past the desks and back twice; the first round also uploads the shared textures of models not yet on screen.
+  const actors0=await page.evaluate(()=>office.actors.size);
+  const textures=[];
+  for(let round=0;round<2;round++){
+   for(const extra of [16,0]){
+    const f=await page.evaluate(n=>{office.update([...visible(),...Array.from({length:n},(_,i)=>({key:'w:'+i,id:'w'+i,agent:'claude',status:'error',platform:'cli',project:'p'+i}))]);return office.framesShown},extra);
+    await page.waitForFunction(f=>office.framesShown>f+10,f);
+   }
+   assert.equal(await page.evaluate(()=>office.plan.desks.length),8);
+   await page.waitForFunction(n=>office.actors.size===n,actors0,{timeout:30000});
+   textures.push(await page.evaluate(()=>office.gl.info.memory.textures));
+  }
+  assert.equal(textures[1],textures[0]);
+  check('3D keeps animating when the floor plan regrows and shrinks, and frees what it drops');
   await page.click('#pipBtn');await page.waitForFunction(()=>!!popout.win);
   const pip=context.pages().find(p=>p!==page);assert.ok(pip);
   const frame=await (async()=>{for(let i=0;i<100;i++){const f=pip.frames().find(f=>f.url().includes('?pip=1'));if(f)return f;await new Promise(r=>setTimeout(r,50))}throw Error('No compact frame')})();
@@ -173,13 +196,14 @@ async function drawnLogos(target) {
   assert.equal(await page.evaluate(()=>office.visible),false);
   assert.equal(await frame.evaluate(()=>state.quality),'high');
   assert.equal(await frame.locator('#pipBtn').isVisible(),false);
+  assert.equal(await frame.locator('#qualSeg').isVisible(),false);
   await pip.setViewportSize({width:480,height:400});
   await frame.waitForFunction(()=>!document.getElementById('office').classList.contains('loading'));await page.waitForTimeout(400);await screenshot(pip, 'pip-3d');
   assert.equal(await frame.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   check('real Document PiP opens 3D at compact size and suspends the main office');
   await openSettings(page);await page.uncheck('#showAgent');await frame.waitForFunction(()=>!state.showAgent&&!office.showAgent);
   await openSettings(page);await page.selectOption('#langSel','zh-TW');await frame.waitForFunction(()=>langCode==='zh-TW');
-  await openSettings(page);await page.click('#agentSeg [data-v=codex]');await frame.waitForFunction(()=>state.agent==='codex');
+  await openSettings(page);for(const a of ['claude','gemini','opencode'])await page.uncheck(`#agentToggles input[data-v=${a}]`);await frame.waitForFunction(()=>state.hiddenAgents.length===3);
   await frame.click('#viewSeg [data-v=list]');await page.waitForFunction(()=>state.view==='list');
   assert.equal(await frame.locator('section').count(),2);
   assert.equal(await frame.locator('.card[data-s=done]').count(),0);
@@ -193,8 +217,9 @@ async function drawnLogos(target) {
   assert.equal(await frame.evaluate(()=>__notifications.length),0);
   assert.equal(await page.evaluate(()=>__notifications.length),1);
   check('only the main page emits completion notifications');
-  await openSettings(page);await page.click('#agentSeg [data-v=all]');
-  await frame.click('#viewSeg [data-v=office]');await openSettings(page);await page.check('#showAgent');await frame.click('#qualSeg [data-v=mid]');
+  await openSettings(page);for(const a of ['claude','gemini','opencode'])await page.check(`#agentToggles input[data-v=${a}]`);
+  await frame.click('#viewSeg [data-v=office]');await page.waitForFunction(()=>state.view==='office');
+  await openSettings(page);await page.check('#showAgent');await page.click('#qualSeg [data-v=mid]');
   await frame.waitForFunction(()=>officeKind==='mid'&&office.framesShown>4);
   await page.waitForFunction(()=>state.quality==='mid');
   const foreground=await context.newPage();await foreground.goto('about:blank');await foreground.bringToFront();
@@ -227,7 +252,7 @@ async function drawnLogos(target) {
    window.__stream=popout.stream;return values.size;
   });
   assert.ok(colors>20,'preview includes rendered 3D content rather than a blank frame');
-  await fallback.click('#qualSeg [data-v=mid]');await fallback.waitForFunction(()=>officeKind==='mid'&&office.framesShown>4);
+  await openSettings(fallback);await fallback.click('#qualSeg [data-v=mid]');await fallback.waitForFunction(()=>officeKind==='mid'&&office.framesShown>4);
   assert.equal(await fallback.evaluate(()=>popout.stream===__stream),true);
   await fallback.click('#closePreview');await fallback.waitForFunction(()=>!popout.stream);
   assert.equal(await fallback.evaluate(()=>__stream.getTracks().every(t=>t.readyState==='ended')),true);
