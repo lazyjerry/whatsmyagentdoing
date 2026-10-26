@@ -75,7 +75,7 @@ async function drawnLogos(target) {
   },sessions);
   context.on('page',p=>p.on('pageerror',e=>errors.push(String(e))));
   const page=await context.newPage();await page.goto(base);await stable(page);
-  assert.match(await page.title(),/What's my agent doing$/);
+  assert.match(await page.title(),/Agents Office$/);
   assert.equal(await page.locator('h1').count(),0);
   assert.equal(await page.evaluate(()=>document.querySelector('#summary').getBoundingClientRect().left>document.querySelector('.controls').getBoundingClientRect().right),true);
   await page.waitForSelector('#chkBtn');

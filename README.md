@@ -1,4 +1,4 @@
-# 👀 whatsmyagentdoing
+# 🪑 whatsmyagentdoing
 
 **即時看到你機器上每一個 Claude Code、Codex 與 Gemini CLI agent 正在做什麼——在一間小小的辦公室裡。** 裝成 skill 輸入 `/myoffice`，或直接執行建好的單檔 Go 執行檔；兩者跑的是同一支 Go 程式。
 
