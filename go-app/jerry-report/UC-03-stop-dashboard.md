@@ -11,7 +11,7 @@
 
 ## 主要流程
 
-1. 使用者執行 `--stop`。`parseArgs` 後進入 `o.Stop` 分支（在 `--scene` 安裝之後、`--json` 之前）。
+1. 使用者執行 `--stop`。`parseArgs` 後進入 `o.Stop` 分支（在 `--update` 之後、`--json` 之前）。
 2. 對 `p = port … port+10` 逐一 `alreadyRunning(p)`：GET `/api/ping`（逾時 0.8 秒），回應含 `whatsmyagentdoing` 才算。
 3. 命中的連接埠呼叫 `stopAt(p)`：POST `/api/shutdown`，帶標頭 `x-whatsmyagentdoing: stop`，逾時 1.5 秒；狀態 200 視為成功。
 4. 伺服器端 `ServeHTTP`：Host 白名單通過、標頭等於 `stop` 且 `shutdown` 鉤子存在 → 回 `{ok: true}`；`closeClients()` 關掉所有 SSE channel；`time.AfterFunc(50ms, onShutdown)`。

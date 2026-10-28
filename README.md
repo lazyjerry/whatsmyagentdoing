@@ -55,7 +55,7 @@ ln -s ~/.whatsmyagentdoing/src/skills/myoffice ~/.codex/skills/myoffice
 
 ## Go 版啟動
 
-Go 版把網頁、3D 模型、場景目錄與版本號都用 `go:embed` 包進單一執行檔，建好後可以複製到任何地方執行，不需要 Node.js，也不需要這個 clone。以下節錄自 [go-app/README.md](go-app/README.md)，完整的旗標、更新流程與環境變數請看那份：
+Go 版把網頁、3D 模型與版本號都用 `go:embed` 包進單一執行檔，建好後可以複製到任何地方執行，不需要 Node.js，也不需要這個 clone。以下節錄自 [go-app/README.md](go-app/README.md)，完整的旗標、更新流程與環境變數請看那份：
 
 > ### 建置
 >
@@ -88,11 +88,11 @@ skill 呼叫的就是這個執行檔（`scripts/installSkill.sh` 複製到 `skil
 
 ## 它長什麼樣
 
-開啟的是一間等角視角的**辦公室**。正在工作的 agent 坐在隔間座位上：思考時冒出思考泡泡、執行工具時打字且螢幕上有程式碼捲動、需要你介入時會站起來揮手。最近剛完工的幾個 agent 會留在辦公室裡下班閒晃：到茶水間喝咖啡、喝水，坐沙發、懶骨頭，逛書架，在會議室白板前塗寫，打街機、打桌球或手足球（兩個人都有空時），進電話亭，或找張空桌小睡。其他人都回家了。窗景跟著你的本地時間變化（Medium 模式還有一隻辦公室貓）。滑鼠移到任何人身上就能看到它正在處理什麼。
+開啟的是一間等角視角的**辦公室**。正在工作的 agent 坐在隔間座位上：思考時冒出思考泡泡、執行工具時打字且螢幕上有程式碼捲動、出錯時站起來揮手；座位旁的牆上掛著業績白板。等你回應的 agent（要授權或問問題）到電話亭排隊打給你，亭內是等最久的那個。工作中帶著「快要 compact」或「本輪太久」警告的 agent 進會議室，一個人就坐著，兩個以上就隔著桌子吵架。最近剛完工的幾個 agent 留在左前方的沙發區：剛完成的坐著滑手機，完成十分鐘以上的坐到電視前的沙發看電視；沙發坐滿或閒置、中斷的，到茶水間和旁邊的休息區晃晃。其他人都回家了。點業績白板、會議室白板、電話亭、電視或冰箱會說明那一區的用途。窗景跟著你的本地時間變化（Medium 模式還有一隻辦公室貓）。滑鼠移到任何人身上就能看到它正在處理什麼。
 
-兩種畫風：**Medium** 是手繪風 2D canvas（零依賴）。**High（3D）** 用即時光影渲染同一間辦公室，採用 [Kenney](https://kenney.nl) 的 CC0 *Mini Characters*（含走路／坐下／互動動畫）與 *Furniture Kit*；拖曳旋轉、捲動縮放。3D bundle（three.js，gzip 後約 180 KB）與模型（約 1.3 MB，meshopt 壓縮）只在選擇 High 時才載入。
+兩種畫風：**Medium** 是手繪風 2D canvas（零依賴）。**High（3D）** 用即時光影渲染同一間辦公室，採用 [Kenney](https://kenney.nl) 的 CC0 *Mini Characters*（含走路／坐下／互動動畫）與 *Furniture Kit*；拖曳旋轉，觸控板雙指滑動、滑鼠滾輪或方向鍵平移，捏合（或按住 Ctrl 滾動）縮放。3D bundle（three.js，gzip 後約 180 KB）與模型（約 1.3 MB，meshopt 壓縮）只在選擇 High 時才載入。
 
-**場景（3D）：** 辦公室內建；其他場景是可下載的小型場景包（Pirate Cove、Café、Space Station、Castle 各 100–160 KB），只在你從場景按鈕點選、執行 `--scene pirate`、或請 agent 幫你切換時才會抓取。場景包只有資料（一份 manifest 加上 Kenney CC0 模型），安裝到 `~/.whatsmyagentdoing/scenes` 前會先比對釘住的 SHA-256。skill 版與 Go 版共用這個目錄。
+**場景：** 只有內建的辦公室。舊版的可下載場景包（Pirate Cove、Café、Space Station、Castle）已移除。
 
 偏好純卡片？切到**清單**檢視。不論哪種檢視，每個 session 都是即時更新：
 
@@ -105,15 +105,22 @@ skill 呼叫的就是這個執行檔（`scripts/installSkill.sh` 複製到 `skil
 | ✅ 完成 | 這一輪結束，附上最後的回覆 |
 | ■ 中斷／❗ 錯誤／– 閒置 | |
 
+**警告標記：** 跟狀態分開，同一個人可以同時有兩種。辦公室裡畫在人物頭部左側，是深色底、洋紅框的等寬字小塊，直接寫數字；清單卡片、hover 卡片與圖例用同樣的小塊。
+
+| 標記 | 意思 |
+|---|---|
+| `ctx 92%` 快要 compact | 最新一次請求的 context 已達自動 compact 門檻的 85%，數字是目前的比例（不分狀態都顯示；hover 卡片的「Context」列寫出百分比與 token 數）。只支援 Claude Code 與 Codex |
+| `72m` 本輪太久 | 思考／執行／撰寫中，這一輪已超過 60 分鐘（等你回應不算），數字是這一輪的分鐘數，超過 99 分鐘寫成 `1h40m`。卡片計時前面的「≥」表示 log 太大、只讀到這一輪的後段，實際開始得更早 |
+
 介面支援 English、繁體中文、简体中文、日本語、한국어、Español、Français、Deutsch 與 Português。預設跟著你寫 prompt 的語言（沒有就跟瀏覽器語言）；可從 🌐 選單手動指定。
 
 頁首右側的 **需要你／錯誤／工作中／已完成／閒置** 五個計數同時是開關：點一下就隱藏或顯示該狀態的 agent（辦公室與清單都適用，數字照算），設定面板的「顯示狀態」勾選與它同步；閒置預設隱藏。清單檢視中，session 依同樣五組分區，附目前這一輪的即時計時器、resume 指令的複製按鈕（`claude --resume …` / `codex resume …`）、agent 完工時的瀏覽器通知（可選），以及 Agent／平台多選篩選與 subagent 開關。分頁標題會顯示有多少個 agent 在工作。
 
 **Agent 徽章：** 2D 與 3D 中，每個 agent（含 subagent）名字旁都有透明底的 Claude、Codex、Gemini、OpenCode 官方 logo。相同圖示也出現在圖例、清單卡片與篩選器。到 **設定 → Agent 徽章** 可隱藏辦公室標記與圖例，設定會保存。圖示隨套件附帶於本機，圖片載入失敗時以縮寫字母替代。詳見[圖示來源與授權](skills/myoffice/assets/agents/README.md)。
 
-工具列固定顯示檢視與彈出視窗控制項。2D/3D（預設 3D，子母畫面跟著主畫面）、場景選擇、Agent 與平台篩選（多選，預設全選）、顯示選項、通知與語言則收在**設定**裡。
+工具列固定顯示檢視與彈出視窗控制項。2D/3D（預設 3D，子母畫面跟著主畫面）、Agent 與平台篩選（多選，預設全選）、顯示選項、通知與語言則收在**設定**裡。
 
-**彈出視窗：** 支援 [Document Picture-in-Picture API](https://developer.chrome.com/docs/web-platform/document-picture-in-picture) 的瀏覽器可以把辦公室或清單開成可互動、永遠置頂的視窗。精簡清單只顯示 **需要你**、**錯誤** 與 **工作中**。瀏覽器儲存可用時，檢視、畫質、場景、篩選、語言與徽章設定會與主分頁同步。關閉彈出視窗會還原主檢視，且只有主分頁會送通知。
+**彈出視窗：** 支援 [Document Picture-in-Picture API](https://developer.chrome.com/docs/web-platform/document-picture-in-picture) 的瀏覽器可以把辦公室或清單開成可互動、永遠置頂的視窗。精簡清單只顯示 **需要你**、**錯誤** 與 **工作中**。瀏覽器儲存可用時，檢視、畫質、篩選、語言與徽章設定會與主分頁同步。關閉彈出視窗會還原主檢視，且只有主分頁會送通知。
 
 當 Document PiP 不可用時，辦公室檢視的 **彈出** 會改為啟動本機的唯讀影片預覽（2D 或 3D 辦公室）。用它的影片 PiP 按鈕，或瀏覽器自己的影片控制項／右鍵選單（例如 Firefox）把它浮起來。用完請停止預覽。不需要螢幕分享權限，也不會上傳任何影片。背景動畫可能因瀏覽器節流而降低幀率；這個 fallback 不支援清單卡片，也不能點選 agent。
 
@@ -132,11 +139,11 @@ skill 的 `skills/myoffice/bin/whatsmyagentdoing` 與直接建出的 `go-app/wha
 --demo            顯示虛構團隊而非你的 session（截圖、試玩用）
 --stop            停止正在執行的 dashboard（或說 /myoffice stop）
 --update          更新到最新版並重啟（或說 /myoffice update）
---scenes          列出 3D 場景，含已安裝與可下載的
---scene <id>      視需要下載場景，並以該場景開啟辦公室
 ```
 
 執行中再跑一次只會重新開啟分頁。
+
+舊版的 `--scenes`、`--scene <id>`、`--remove-scene <id>` 已移除，場景只剩內建的辦公室。以前下載的場景包還留在 `~/.whatsmyagentdoing/scenes/`，不再使用，可以手動刪掉。
 
 **更新：** 頁面右下角有 **檢查更新** 按鈕，滑鼠移上去顯示目前版本號，旁邊的時鐘是主機目前時間（由 `sw.js` 這個 service worker 對 `/api/time` 校準，所有分頁共用同一個時間差）；只有按下按鈕時才會抓一次本 repo main 分支的 `skills/myoffice/package.json`，不會自動檢查，有新版時改顯示 **Update** 按鈕。要改成自動（頁面載入與每半小時、CLI 啟動時都檢查），把 `go-app/config.go` 的 `AutoUpdateCheck` 改成 `true`；設定 `WMAD_NO_UPDATE_CHECK=1` 則兩種模式都不檢查。按下按鈕——或執行 `--update`、或說 `/myoffice update`——會在 clone 執行 `git pull`、重新同步 `static/` 並重新 `go build`（需要 Go），只在執行檔還放在 clone 的 `go-app/` 或 `skills/myoffice/bin/` 裡時可用。
 
@@ -166,6 +173,22 @@ skill 的 `skills/myoffice/bin/whatsmyagentdoing` 與直接建出的 `go-app/wha
 
 **對外連線。** `Repo`、`Branch`、`AutoUpdateCheck` 同樣在這個檔案，見上方「更新」段。
 
+**警告標記。** 設 0 關閉該項。
+
+| 常數 | 預設 | 意思 |
+|---|---|---|
+| `CompactWarnRatio` | 0.85 | context 達到自動 compact 門檻的這個比例 → `ctx %` |
+| `LongTurnAfter` | 60 分鐘 | 工作中的這一輪超過這麼久 → `min` |
+
+自動 compact 門檻先照各 CLI 自己的設定檔算，讀不到才用下列預設：
+
+| 常數 | 預設 | 意思 |
+|---|---|---|
+| `ClaudeDefaultWindow` | 200,000 | Claude Code 的 `~/.claude/settings.json` 沒設 `modelSettings.<model>.autoCompactWindow` 時的 window |
+| `ClaudeLargeWindow` | 1,000,000 | context 已超過預設 window 的門檻，改視為 1M 模型 |
+| `ClaudeCompactReserve` | 33,000 | Claude Code 的門檻 = window − 這個保留量（20k 摘要輸出＋13k 緩衝，本機實測吻合） |
+| `CodexCompactRatio` | 0.9 | Codex 的 `~/.codex/config.toml` 沒設 `model_auto_compact_token_limit` 時，門檻 = log 裡的 `model_context_window` × 這個比例 |
+
 ## 運作原理
 
 不需要 hook、不需要設定、不需要 API key。這些工具本來就會在工作時把每則訊息與工具呼叫 append 到 JSONL 檔：
@@ -186,6 +209,7 @@ skill 的 `skills/myoffice/bin/whatsmyagentdoing` 與直接建出的 `go-app/wha
 - Claude Code 與 OpenCode 不會記錄權限提示，所以等待你核准的工具會一直顯示「執行中」直到你回應（Codex 與 Gemini CLI 會記錄，因此會顯示「等你回應」）。
 - Gemini CLI 把思考過程與回覆一起寫入，所以從你的 prompt 到它第一次工具呼叫或回覆之間，只會顯示「思考中」。
 - Log 格式不是公開 API。若更新改了格式，狀態判讀可能退化——請開 issue 回報。
+- `ctx %` 快要 compact 只看得到使用者層級的設定檔：設在 claude 行程上的環境變數（`CLAUDE_CODE_AUTO_COMPACT_WINDOW`、`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`）、專案層級的 settings、Codex 的 profile 都讀不到，用了就會跟實際門檻有落差。Antigravity 不記 token，OpenCode 的 token 欄位尚未驗證，這兩個來源不會出現 `ctx %`。
 
 ## 開發檢查
 
@@ -202,5 +226,5 @@ MIT，見 [LICENSE](LICENSE)。本倉庫 fork 自 [Charonyuu/whatsmyagentdoing](
 第三方內容：
 
 - **three.js**（MIT，Copyright Three.js Authors）：3D 畫面使用，授權聲明保留在 `public/office3d.js` 尾端。
-- **Kenney** 模型（CC0）：`skills/myoffice/assets/kenney/` 與各場景包，見目錄內的授權檔。CC0 不要求署名，仍感謝 [Kenney](https://kenney.nl)。
+- **Kenney** 模型（CC0）：`skills/myoffice/assets/kenney/`，見目錄內的授權檔。CC0 不要求署名，仍感謝 [Kenney](https://kenney.nl)。
 - **Agent logo**：Claude、Codex、Gemini、OpenCode 的官方圖示為各自所有者的商標，本專案未獲其背書，MIT 授權不及於商標；來源見[圖示來源與授權](skills/myoffice/assets/agents/README.md)。

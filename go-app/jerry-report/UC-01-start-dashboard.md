@@ -12,16 +12,16 @@
 ## 主要流程
 
 1. 套件初始化時 `embed.go` 讀內嵌 `VERSION` 得到 `embeddedVersion`；`main()` 建 `Updater`，以它的 `LocalVersion()` 當版本字串。
-2. `parseArgs` 解析參數（port、hours、no-open、private、json、demo、stop、update、scenes、scene、remove-scene）；數值不合法或選項未知則印說明並以 1 離開；`-h`／`-v` 印完以 0 離開。
-3. 單次旗標依序判斷：`--update`（UC-04）→ `--scenes`（UC-07）→ `--remove-scene`（UC-07）；命中就處理後 return。
-4. `--scene <id>` 且非 `office`：先 `scenes.Install(id)`（UC-07），失敗印錯誤以 1 離開；成功印「Downloaded scene」或「Scene … is ready」，繼續。
-5. 再判斷 `--stop`（UC-03）、`--json`（UC-05）；命中就處理後 return。
+2. `parseArgs` 解析參數（port、hours、no-open、private、json、demo、stop、update）；數值不合法或選項未知則印說明並以 1 離開；`-h`／`-v` 印完以 0 離開。
+3. 單次旗標先判斷 `--update`（UC-04）；命中就處理後 return。
+4. 再判斷 `--stop`（UC-03）；命中就處理後 return。
+5. 再判斷 `--json`（UC-05）；命中就處理後 return。
 6. 對 `127.0.0.1:<port>/api/ping` 發 GET（逾時 0.8 秒），回應含 `whatsmyagentdoing` 就是已在執行。
 7. 未執行：依 `--demo` 建 `DemoWatcher` 或 `Watcher(hours)`，型別為 `Source` 介面；`Start()` 先同步跑一次 `Tick()`（立即掃描紀錄），再開 ticker goroutine。
 8. `NewServer(src, opts, updater, onShutdown, onRestart)`：建立 client 集合並啟動 `broadcastLoop` goroutine。
 9. `net.Listen("tcp", "127.0.0.1:<port>")`：失敗且為 EADDRINUSE 則 port+1 重試，最多 10 次；其他錯誤印出並以 1 離開。
 10. 印 `whatsmyagentdoing v<ver> → http://localhost:<port>  (<n> session(s) in the last <h>h, Ctrl+C to stop)`；demo 時印 `demo team`。`AutoUpdateCheck` 開啟時再強制檢查一次新版並印「Update available」（UC-04）。
-11. 若未指定 `--no-open`，以 `open`／`xdg-open`／`cmd /c start` 開瀏覽器；`--scene` 時網址附 `?view=office&quality=high&scene=<id>`。
+11. 若未指定 `--no-open`，以 `open`／`xdg-open`／`cmd /c start` 開瀏覽器。
 12. `httpServer.Serve(ln)` 阻塞；瀏覽器載入 `/`，進入 UC-02。
 
 ## 替代流程
@@ -41,15 +41,9 @@ flowchart TD
   A0 --> B[parseArgs]
   B --> B1{參數合法?}
   B1 -->|否| E1([印說明，exit 1])
-  B1 -->|是| C{"單次旗標?<br/>--update／--scenes／--remove-scene"}
-  C -->|是| C1[交給 UC-04／UC-07 處理] --> E0([結束])
-  C -->|否| D{--scene 且非 office?}
-  D -->|是| D1[scenes.Install id] --> D2{成功?}
-  D2 -->|否| E1
-  D2 -->|是| C2
-  D -->|否| C2{"--stop／--json?"}
-  C2 -->|是| C3[交給 UC-03／UC-05 處理] --> E0
-  C2 -->|否| F[GET /api/ping 判斷已執行]
+  B1 -->|是| C{"單次旗標?<br/>--update／--stop／--json"}
+  C -->|是| C1[交給 UC-04／UC-03／UC-05 處理] --> E0([結束])
+  C -->|否| F[GET /api/ping 判斷已執行]
   F --> G{已在執行?}
   G -->|是| G1[印 Already running；printUpdateHint] --> G3{--no-open?}
   G3 -->|否| G4[openBrowser] --> E0
@@ -66,7 +60,7 @@ flowchart TD
   K -->|是，tries=0 或其他錯誤| E1
   K -->|否| L[印網址與 session 數；printUpdateHint]
   L --> N{--no-open?}
-  N -->|否| O[openBrowser url+query]
+  N -->|否| O[openBrowser url]
   N -->|是| P
   O --> P(["httpServer.Serve 阻塞 → UC-02"])
 ```
@@ -111,7 +105,7 @@ sequenceDiagram
     opt AutoUpdateCheck 開啟且有新版
       M-->>AG: Update available: vA → vB
     end
-    M->>OS: openBrowser(url + query)
+    M->>OS: openBrowser(url)
     OS->>B: 開啟分頁
     M->>S: httpServer.Serve(ln)
     B->>S: GET /（進入 UC-02）

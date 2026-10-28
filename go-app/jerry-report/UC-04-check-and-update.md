@@ -29,7 +29,7 @@
    - 在 `src` 執行 `go build -o <exe> .`（`exe` 為解過 symlink 的 `os.Executable()`），逾時 5 分鐘
    - 讀 `src/static/VERSION` 回傳新版本號（目前行程內嵌的仍是舊的）
 7. 回 `{ok: true, version}`；`closeClients()`；`time.AfterFunc(100ms, onRestart)`。
-8. `onRestart`：`src.Stop()`、`app.Close()`、`httpServer.Shutdown`；以 `os.Executable()` 加原參數（去掉 `--no-open` 與 `--scene*`，再加 `--no-open`）`exec.Command(...).Start()`；`os.Exit(0)`。
+8. `onRestart`：`src.Stop()`、`app.Close()`、`httpServer.Shutdown`；以 `os.Executable()` 加原參數（去掉 `--no-open`，再加 `--no-open`）`exec.Command(...).Start()`；`os.Exit(0)`。
 9. 新執行檔啟動（UC-01），`embeddedVersion` 為新版；頁面每秒 GET `/api/version`，版本變了或超過 20 秒就 reload。
 
 ### 從 CLI 更新

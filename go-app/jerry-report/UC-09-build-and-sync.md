@@ -4,8 +4,8 @@
 |---|---|
 | 主要參與者 | 維護者 |
 | 次要參與者 | `skills/myoffice/`（前端真源）、Go 工具鏈、`--update`（UC-04 以程式呼叫同一條路） |
-| 前置條件 | clone 完整（`skills/myoffice/` 有 `public/`、`assets/`、`scenes.json`、`package.json`）；Go 1.22 以上 |
-| 觸發 | 前端改動後（`npm run build` 重打 3D bundle、改 `index.html`、改 `scenes.json`、升版）；初次建置；開發檢查 |
+| 前置條件 | clone 完整（`skills/myoffice/` 有 `public/`、`assets/`、`package.json`，倉庫根有 `LICENSE`）；Go 1.22 以上 |
+| 觸發 | 前端改動後（`npm run build` 重打 3D bundle，含 `web/street.js` 的夜市場景；改 `index.html`；升版）；初次建置；開發檢查 |
 | 後置條件 | `static/` 與真源一致，`static/VERSION` 為目前版本；執行檔 `whatsmyagentdoing` 內嵌最新資源 |
 | 相關程式 | `scripts/sync-static.sh`、`embed.go`、`go.mod`、`.gitignore`（根目錄） |
 
@@ -15,8 +15,8 @@
 
 1. 維護者在 `go-app/` 執行 `scripts/sync-static.sh`。
 2. 腳本解析路徑：`here` 為 `go-app/`，`root` 為 `../skills/myoffice`，`dst` 為 `static/`。
-3. 檢查真源的四個項目都存在，缺任一個以 2 離開。
-4. 建暫存目錄，把 `public/` 與 `assets/` 下非 `.` 開頭的檔案逐一複製（保留子目錄），複製 `scenes.json`。
+3. 檢查真源的三個項目與倉庫根的 `LICENSE` 都存在，缺任一個以 2 離開。
+4. 建暫存目錄，把 `public/` 與 `assets/` 下非 `.` 開頭的檔案逐一複製（保留子目錄），把 `LICENSE` 複製成 `public/LICENSE`。
 5. 以 sed 從 `package.json` 抽出 `"version": "x.y.z"` 的值寫成 `VERSION`；抽不到以 2 離開。
 6. `diff -rq` 暫存目錄與 `static/`：相同印「already in sync」結束；不同則 `rm -rf static/` 再把暫存目錄 `mv` 過去，印「synced static/ (version x.y.z)」。
 
@@ -43,9 +43,9 @@
 
 ```mermaid
 flowchart TD
-  A([scripts/sync-static.sh]) --> B{"真源四項都在?<br/>public／assets／scenes.json／package.json"}
+  A([scripts/sync-static.sh]) --> B{"真源都在?<br/>public／assets／package.json／LICENSE"}
   B -->|否| B1([missing，exit 2])
-  B -->|是| C["mktemp；複製 public、assets（跳過隱藏檔）、scenes.json"]
+  B -->|是| C["mktemp；複製 public、assets（跳過隱藏檔）、LICENSE"]
   C --> D["sed 抽 version → VERSION"]
   D --> D1{抽到了?}
   D1 -->|否| D2([cannot read version，exit 2])
@@ -75,7 +75,7 @@ sequenceDiagram
 
   M->>SRC: npm run build（前端改動，上層）
   M->>SH: scripts/sync-static.sh
-  SH->>SRC: 檢查 public／assets／scenes.json／package.json
+  SH->>SRC: 檢查 public／assets／package.json
   SH->>SH: 複製到暫存目錄；sed 抽 version → VERSION
   SH->>ST: diff -rq
   alt 相同
@@ -86,7 +86,7 @@ sequenceDiagram
   end
   M->>GO: go build -o whatsmyagentdoing .
   GO->>ST: //go:embed static
-  GO-->>BIN: 內嵌 public、assets、scenes.json、VERSION
+  GO-->>BIN: 內嵌 public、assets、VERSION
   M->>SH: scripts/sync-static.sh --check（開發檢查）
   SH-->>M: in sync（0）／drifted（1）
 ```
@@ -97,3 +97,4 @@ sequenceDiagram
 - 版本號的單一來源仍是 `skills/myoffice/package.json`；Go 端不另存版本常數，也不解析 JSON，只讀 sed 抽出的一行。
 - `go.mod` 沒有 `require`，`go build` 不需要網路；`go vet` 目前乾淨。
 - 測試以 `go test ./...` 執行：`*_test.go` 涵蓋各檔的單元測試，`functional_test.go` 另以 `httptest` 走 SSE 與 API，並在非 `-short` 模式下 `go build` 一份執行檔跑 CLI 旗標、啟動、退讓與 `--stop`。兩版 `--json` 對照仍是確認與 Node 版一致的手段。
+- `skills/myoffice/scenes.json` 與 `static/scenes.json` 已刪除，腳本不再同步場景包目錄。夜市場景的定義 `web/street.js` 是 ES module，`npm run build`（esbuild）把它跟 `web/office3d.js` 打成 `public/office3d.js`，所以只要照「`npm run build` → 同步 → `go build`」的順序，場景就跟著 bundle 進執行檔；NPC 文字在 `dialogues.go`，直接編進 Go 程式，不經同步腳本。

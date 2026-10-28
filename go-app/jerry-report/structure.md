@@ -4,7 +4,7 @@
 
 `go-app/` 是 Node 版後端（`bin/cli.js` 加 `src/`）的 Go 平移版：同一組旗標、同一組 HTTP 端點、同一份 SSE（Server-Sent Events）輸出、同一個預設連接埠。只用 Go 標準函式庫，沒有第三方依賴。
 
-與 Node 版最大的差別是散佈形式：網頁、3D 模型、場景目錄與版本號全部以 `go:embed` 包進單一執行檔，執行時不讀倉庫裡的任何檔案，複製到任何地方都能跑。代價是倉庫多一份 2.2 MB 的靜態檔副本，前端改動後要多一步同步再重建（見第 11 節）。
+與 Node 版最大的差別是散佈形式：網頁、3D 模型與版本號全部以 `go:embed` 包進單一執行檔，執行時不讀倉庫裡的任何檔案，複製到任何地方都能跑。代價是倉庫多一份 2.2 MB 的靜態檔副本，前端改動後要多一步同步再重建（見第 11 節）。
 
 Go 版不是 skill 的預設後端。`SKILL.md` 仍呼叫 Node 版，要讓 agent 改用 Go 版得手動把 skill 裡的指令換成執行檔路徑。
 
@@ -13,29 +13,28 @@ Go 版不是 skill 的預設後端。`SKILL.md` 仍呼叫 Node 版，要讓 agen
 ```
 go-app/
 ├── main.go            CLI 進入點：parseArgs、單次旗標分派、已執行偵測、監聽與連接埠退讓、onShutdown／onRestart
-├── config.go          對外 host 集中處：Repo、Branch、AutoUpdateCheck、LatestURL、場景包 release URL
+├── config.go          對外 host 與可調常數：Repo、Branch、AutoUpdateCheck、LatestURL、時間設定、警告門檻、夜市設定
 ├── embed.go           //go:embed static；staticFS（fs.Sub）與 embeddedVersion（讀 VERSION）
 ├── watcher.go         找出近期 session 檔並持續讀取增量（1 秒 tick）；Source 介面；三家目錄走訪
 ├── parsers.go         Session 結構；三種 agent 的紀錄 → Session；clean()／stripPairedTags()
-├── server.go          HTTP 路由、Options、View／Snapshot、view() 時效修正、SSE 廣播、靜態檔與場景檔服務
+├── server.go          HTTP 路由、Options、View／Snapshot、view() 時效修正、SSE 廣播、靜態檔服務
 ├── lang.go            從 prompt 猜 UI 語言（CJK 計數、Latin 停用詞投票）
 ├── update.go          Updater：版本檢查（GitHub raw）、Info()、Update()（git pull → sync → go build）
-├── scenes.go          Scenes：目錄、已安裝、下載、SHA-256、untar 白名單、安裝、移除
+├── dialogues.go       夜市場景的 NPC 文字（攤位用途、廟公台詞、使用 tips、半點訪客）與 /api/street 的內容
 ├── demo.go            DemoWatcher：10 個虛構 session 依固定腳本循環（與 Watcher 同介面）
 ├── util.go            urlHost、fileExists、dirExists、sourceDir（找 --update 用的原始碼目錄）
 ├── *_test.go          單元測試（每個檔一份）、testhelpers_test.go（fixture）、functional_test.go（HTTP／SSE／CLI 功能測試）
 ├── go.mod             module whatsmyagentdoing，go 1.22，無 require
-├── scripts/sync-static.sh   把 skills/myoffice/ 的 public、assets、scenes.json、版本號同步成 static/
+├── scripts/sync-static.sh   把 skills/myoffice/ 的 public、assets、版本號同步成 static/
 ├── static/            內嵌副本（進版控，不要手改）
 │   ├── VERSION        只有版本號一行，sed 自 package.json 抽出
-│   ├── scenes.json    可下載場景包目錄
-│   ├── public/        index.html、office.js、office3d.js、popout.js、i18n.js
+│   ├── public/        index.html、office.js、office3d.js（含 street.js 的夜市場景）、popout.js、i18n.js
 │   └── assets/        agents/*.png、kenney/**/*.glb
 ├── README.md          需求、建置、旗標、更新、環境變數、已知差異
 └── whatsmyagentdoing  建置產物（.gitignore）
 ```
 
-使用者端資料目錄：`~/.whatsmyagentdoing/scenes/<id>/`（下載的場景包，與 Node 版共用）。
+使用者端資料目錄：無。舊版下載場景包用的 `~/.whatsmyagentdoing/scenes/` 已不再讀寫，也不會自動刪除，可以手動刪掉。
 
 ## 3. 執行時架構
 
@@ -62,7 +61,7 @@ flowchart LR
     E["embed.go<br/>staticFS（內嵌 static/）"]
     LG["lang.go"]
     UP["update.go"]
-    SC["scenes.go"]
+    DG["dialogues.go<br/>夜市 NPC 文字"]
     D["demo.go<br/>DemoWatcher"]
   end
 
@@ -70,9 +69,8 @@ flowchart LR
     IDX["index.html 主程式"]
   end
 
-  GH["GitHub<br/>raw package.json／releases"]
+  GH["GitHub<br/>raw package.json"]
   TOOLS["git／bash／go 工具鏈"]
-  UD["~/.whatsmyagentdoing/scenes/"]
 
   L1 --> W
   L2 --> W
@@ -87,28 +85,25 @@ flowchart LR
   M --> H
   H --> E
   H --> UP
-  H --> SC
-  H -->|"SSE /events、/api/*、靜態檔、/assets、/scenes"| IDX
+  H --> DG
+  H -->|"SSE /events、/api/*、靜態檔、/assets"| IDX
   UP -->|"https GET package.json"| GH
   UP -->|"git pull、sync-static.sh、go build"| TOOLS
-  SC -->|"https GET 場景包"| GH
-  SC --> UD
-  H -->|"/scenes/<id>/**"| UD
 ```
 
 ## 4. 模組職責
 
 | 檔案 | 職責 | 關鍵對外介面 |
 |---|---|---|
-| `main.go` | 解析參數；單次旗標（`--update`、`--scenes`、`--remove-scene`、`--stop`、`--json`）各自處理後 return；`--scene` 先安裝再啟動；`alreadyRunning` 探測 `/api/ping`；建立 `Source`（Watcher 或 DemoWatcher）與 `Server`；`net.Listen` 失敗且為 EADDRINUSE 則 port+1，最多 10 次；印網址與 session 數；開瀏覽器；`onShutdown`／`onRestart` 閉包 | `main()`、`parseArgs`、`openBrowser`、`alreadyRunning`、`stopAt`、`printUpdateHint`、`isAddrInUse` |
-| `config.go` | 所有會連出去的位址：`Repo`、`Branch`、`LatestURL`、`sceneReleaseURL()`；`AutoUpdateCheck` 開關（預設 false） | 常數與 `sceneReleaseURL` |
+| `main.go` | 解析參數；單次旗標（`--update`、`--stop`、`--json`）各自處理後 return；`alreadyRunning` 探測 `/api/ping`；建立 `Source`（Watcher 或 DemoWatcher）與 `Server`；`net.Listen` 失敗且為 EADDRINUSE 則 port+1，最多 10 次；印網址與 session 數；開瀏覽器；`onShutdown`／`onRestart` 閉包 | `main()`、`parseArgs`、`openBrowser`、`alreadyRunning`、`stopAt`、`printUpdateHint`、`isAddrInUse` |
+| `config.go` | 所有會連出去的位址：`Repo`、`Branch`、`LatestURL`；`AutoUpdateCheck` 開關（預設 false）；夜市設定 `StreetOverflowMax`、`StreetVisitorStay`（經 `/api/street` 帶給前端） | 常數 |
 | `embed.go` | `//go:embed static` 收錄整棵樹；`staticFS` 以 `fs.Sub` 去掉 `static/` 前綴；`embeddedVersion` 在套件初始化時讀 `VERSION`，缺檔或空白回 `0.0.0` | `staticFS`、`embeddedVersion` |
 | `watcher.go` | `Tick()`：載入 Codex 索引與 Gemini 專案表（mtime 變才讀）；每 5 秒重新走訪三家目錄，其餘 tick 只 stat 已知檔；新檔整檔讀或「頭 128 KB + 尾 768 KB」；檔案變長讀增量、變短丟掉 tracker；讀失敗記入 `failed` 一分鐘後重試；超出時間窗的 tracker 移除；有變更就對 `changes` 做非阻塞送出。`Sessions()` 回傳 struct 副本並補 Gemini 的 cwd／mtime 與 Codex 的 thread 名稱 | `Source` 介面、`NewWatcher`、`Start`／`Stop`／`Tick`／`ForceRescan`／`Sessions`／`Count`、`describeDirs` |
 | `parsers.go` | `Session` 結構；`applyClaude`／`applyCodex`／`applyGemini`／`applyGeminiDocument` 把一筆紀錄套到 session；`clean()` 去注入區塊與 Markdown 雜訊並以 rune 截斷；`describe*Tool` 產生 activity 字串；`baseName` 同時認 `/` 與 `\` | `newSession`、四個 apply 函式、`clean`、`short`、`baseName`、`truncate` |
-| `server.go` | `Options`、`View`、`Snapshot`；`view()` 以時鐘修正狀態並套隱私；`snapshot()` 排序、附語言猜測；`Server` 持 client 集合與上次簽章；`broadcastLoop` 收 `Changes()` 或 5 秒 tick 就 `push()`；`push()` 去掉 `now` 欄位比對、不同才送；`ServeHTTP` 做 Host 白名單與路由；`serveEmbedded`（內嵌檔）與 `serveFile`（場景檔）；`serveEvents` 每 client 一條緩衝 channel、20 秒 ping | `NewServer`、`Server.Close`、`snapshot`、`view`、`promptLanguage` |
+| `server.go` | `Options`、`View`、`Snapshot`；`view()` 以時鐘修正狀態並套隱私；`snapshot()` 排序、附語言猜測；`Server` 持 client 集合與上次簽章；`broadcastLoop` 收 `Changes()` 或 5 秒 tick 就 `push()`；`push()` 去掉 `now` 欄位比對、不同才送；`ServeHTTP` 做 Host 白名單與路由；`serveEmbedded`（內嵌檔）；`/api/street` 回 `streetPayload()`；`serveEvents` 每 client 一條緩衝 channel、20 秒 ping | `NewServer`、`Server.Close`、`snapshot`、`view`、`promptLanguage` |
 | `lang.go` | `guessLanguage(texts, minWeight)`：CJK 字元乘 4 與 Latin 字元比大小，再分 ja／ko／zh-CN／zh-TW；Latin 以五種語言的停用詞投票，至少 3 票否則 en。`guessFromPrompts`：每個不同 prompt 一票（前 80 rune 去重），至少 2 票才採信 | `guessLanguage`、`guessFromPrompts`、`supportedLangs` |
 | `update.go` | `Updater`：`LocalVersion()` 回 `embeddedVersion`；`CheckLatest(force)` 抓 GitHub raw `package.json`（逾時 4 秒、上限 64 KB、30 分鐘快取、並發共用一次抓取）；`Info()` 回 `{version, latest, updateAvailable, canUpdate, auto}`；`CanUpdate()` 看 `sourceDir()` 是否找得到；`Update()`：`git pull --ff-only` → `bash scripts/sync-static.sh` → `go build -o <exe> .`，回傳同步後 `static/VERSION` | `NewUpdater`、`LocalVersion`、`CheckLatest`、`Info`、`CanUpdate`、`Update` |
-| `scenes.go` | `Scenes{}`：`Catalog()` 讀內嵌 `scenes.json` 並補 URL；`InstalledList()` 掃 `~/.whatsmyagentdoing/scenes/*/manifest.json`；`SceneDir(id)`；`Install(id)`：已裝且版本足夠就跳過，否則下載（只允許 https、上限 30 MB、逾時 5 分鐘）→ SHA-256 比對 → `untar` 到暫存目錄 → 驗 `manifest.json` → rename；`Remove(id)`；`sceneName` 取英文名給 CLI 列表 | `Catalog`、`InstalledList`、`SceneDir`、`Install`、`Remove`、`sceneName` |
+| `dialogues.go` | 夜市場景（UC-07）的 NPC 文字，只寫 `zh-TW` 與 `en`：`stalls`（15 攤，老闆／店員被點時說明攤位用途）、`npcs`（廟公、拜拜阿嬤、路人、食客、下棋老人）、`tips`（系統使用提示）、`visitors`（12 位半點訪客，`slot` 0–11）；`streetPayload()` 組成 `/api/street` 的回應。ID 固定，前端以 ID 對應攤位，下一階段改成 TODO 清單 | `Stall`、`NPC`、`Line`、`Visitor`、`Text`、`streetPayload` |
 | `demo.go` | `DemoWatcher`：10 個虛構 session，每 0.5 秒 `Tick()` 依 `demoScript`（thinking 3 s → tool 4 s → thinking 2 s → tool 3 s → typing 3 s → done 16 s）循環；兩位成員每隔一輪在 typing 階段改為 waiting；只有狀態鍵變了才更新並通知 | `NewDemoWatcher`、`Source` 介面 |
 | `util.go` | `sourceDir()`：依 `WMAD_SRC` → 執行檔所在目錄（解 symlink）→ 工作目錄，找同時有 `go.mod`、`main.go` 且上一層有 `.git` 的目錄 | `sourceDir`、`urlHost`、`fileExists`、`dirExists` |
 
@@ -177,6 +172,10 @@ classDiagram
     +int64 StartedAt
     +int64 Mtime  watcher 填
     +string GeminiProject  內部用，不輸出
+    +int64 TurnStartFloor  大檔頭尾讀取、尾段沒有 prompt 時的本輪下限
+    +int64 ContextTokens  最新一次請求的 context
+    +int64 ContextWindow  Codex 的 model_context_window
+    +int64 CompactAt  自動 compact 門檻，watcher 填（compact.go）
   }
   class View {
     +string Key  agent:id
@@ -185,6 +184,9 @@ classDiagram
     +*string Activity  只在 tool／waiting 時輸出
     +*string Prompt Reply Title  隱私模式為 nil
     +*int64 LastEventAt  無事件時用 Mtime
+    +bool TurnStartApprox  TurnStartedAt 取自 TurnStartFloor
+    +*int64 ContextTokens CompactAt
+    +[]string Alerts  compact／longTurn
   }
   class Snapshot {
     +int64 Now
@@ -205,6 +207,10 @@ classDiagram
 ```
 
 `Watcher.Sessions()` 在複製時補三件事：Gemini 的 `Cwd` 由 `geminiProjects` 對回（找不到就用 tmp 目錄名）、Gemini 的 `LastEventAt` 取檔案 mtime（因為它整則重寫訊息但保留原時間戳）、Codex 的 `Title` 由 `codexNames` 補上。
+
+最後每筆再由 `compactLimits.at()` 填 `CompactAt`：Claude 為 `settings.json` 的 `modelSettings.<model>.autoCompactWindow`（沒設用 `ClaudeDefaultWindow`，context 已超過其門檻改用 `ClaudeLargeWindow`）減 `ClaudeCompactReserve`；Codex 為 `config.toml` 頂層的 `model_auto_compact_token_limit`，沒設用 `ContextWindow × CodexCompactRatio`；其他來源為 0。兩個設定檔的 mtime 變了，`Tick()` 才重讀。
+
+大檔（超過 `headBytes + tailBytes`）只讀頭尾時，讀完頭段會清掉 `TurnStartedAt`（頭段的 prompt 屬於舊的 turn）；尾段也沒有 prompt，就把尾段第一筆紀錄的時間存進 `TurnStartFloor`。
 
 ## 8. 狀態定義、解析規則與時效判定
 
@@ -243,6 +249,9 @@ classDiagram
 | content `text` | `Reply = clean(text, 220)`；`stop_reason` 為 `end_turn`／`stop_sequence` → done，否則 typing |
 | content `tool_use` | tool；`AskUserQuestion`／`ExitPlanMode` → waiting；`Activity = describeClaudeTool` |
 | `isApiErrorMessage` | error；`Error = Reply` |
+| `type=user`、`isCompactSummary` | 略過（compact 後的摘要不是新 prompt，本輪繼續） |
+| `type=system`、`subtype=compact_boundary` | `ContextTokens = compactMetadata.postTokens` |
+| `type=assistant`、`message.usage`（非 `isSidechain`） | `ContextTokens = input + cache_creation_input + cache_read_input`（總和為 0 不更新） |
 
 `describeClaudeTool`：`mcp__server__tool` → `server · tool`；Bash → `Bash: ` 加 description 或 command（90 字）；Read／Edit／Write／MultiEdit／NotebookEdit → 工具名加檔名；Grep／Glob → 工具名加 pattern（60 字）；WebFetch → host；WebSearch → query；Agent／Task → `Subagent: ` 加 description；Skill → `Skill ` 加名稱；TodoWrite → `Updating todo list`；其他回工具名。
 
@@ -270,6 +279,8 @@ classDiagram
 | `response_item/function_call`、`custom_tool_call`、`local_shell_call`、`web_search_call` | tool；名稱以 `request_user_input` 開頭 → waiting；`describeCodexCall` 解析 `arguments`／`input`／`action` |
 | `response_item/function_call_output`、`custom_tool_call_output` | thinking |
 | `response_item/message`、`role=assistant` | `Reply`；typing |
+| `event_msg/token_count` | `ContextTokens = info.last_token_usage.input_tokens`；`ContextWindow = info.model_context_window` |
+| `compacted` | `ContextTokens = 0`，等下一筆 `token_count`（compact 不會開新的 `task_started`） |
 
 `describeCodexCall`：`request_user_input*` → `Asking you a question`；物件參數有 `cmd`／`command` → `Shell: …`；有 `query` → 名稱加 query；字串參數以 regex 抓 `cmd: "…"` 或 `tools.xxx(` 的工具名。
 
@@ -321,6 +332,8 @@ stateDiagram-v2
 
 `view()` 另外做：`Key = agent:id`；`Project = baseName(Cwd)`；`Activity` 只在 tool／waiting 時輸出；隱私模式清掉 `Prompt`、`Reply`、`Title`，`Activity` 只留第一個以冒號或空白切開的字（UC-08）。
 
+警告標記（`Alerts`，跟狀態分開）：`ContextTokens ≥ CompactWarnRatio × CompactAt` → `compact`（不分狀態）；時效修正後仍是 thinking／tool／typing，且 `now − TurnStartedAt > LongTurnAfter` → `longTurn`。`TurnStartedAt` 為 0 時改用 `TurnStartFloor`，並設 `TurnStartApprox`（前端計時前加「≥」）。
+
 ## 9. 語言猜測（`lang.go`）
 
 `snapshot()` 在非 demo 時附 `lang`，前端拿來當 UI 預設語言。
@@ -336,18 +349,16 @@ stateDiagram-v2
 | 方法 | 路徑 | 用途 | 守門 | 快取 |
 |---|---|---|---|---|
 | GET | `/`、`/office.js`、`/office3d.js`、`/i18n.js`、`/popout.js` | 內嵌 `static/public/` 的頁面與腳本 | — | `no-store` |
-| GET | `/assets/**` | 內嵌 `static/assets/`（副檔名白名單 `.js`、`.glb`、`.png`、`.json`；逃出掛載點或結尾斜線回 404） | — | `no-cache` |
-| GET | `/scenes/<id>/**` | 已安裝場景包的檔案（磁碟） | id 須符合 `^[a-z0-9-]+$`；路徑須落在場景目錄內；同一副檔名白名單 | `no-cache` |
+| GET | `/assets/**` | 內嵌 `static/assets/`（副檔名白名單 `.js`、`.glb`、`.png`；逃出掛載點或結尾斜線回 404） | — | `no-cache` |
 | GET | `/events` | SSE：連線即送一次快照，之後有變更才推；每 20 秒 `: ping` | — | `no-store` |
 | GET | `/api/sessions` | 一次性快照（JSON） | — | — |
 | GET | `/api/ping` | 身分確認 `{app: "whatsmyagentdoing"}`，CLI 用來判斷是否已在執行 | — | — |
-| GET | `/api/scenes` | `{installed, available}`；icon 缺省為 🗺️ | — | `no-store` |
-| POST | `/api/scenes/install?id=` | 下載並安裝場景包 | 標頭 `x-whatsmyagentdoing: install` | — |
+| GET | `/api/street` | 夜市場景的設定與 NPC 文字 `{overflowMax, visitorStaySec, stalls, npcs, tips, visitors}`，頁面載入時抓一次（UC-07） | — | — |
 | GET | `/api/version` | `{version, latest, updateAvailable, canUpdate, auto}`；帶 `?check=1` 才連 GitHub（`AutoUpdateCheck` 開啟時不帶也抓，30 分鐘快取） | — | `no-store` |
 | POST | `/api/update` | `git pull` → 同步 → `go build`，成功後關閉 SSE 並 100 ms 後重啟 | 標頭 `x-whatsmyagentdoing: update` | — |
 | POST | `/api/shutdown` | 回 `{ok: true}`，關閉 SSE，50 ms 後 `onShutdown` | 標頭 `x-whatsmyagentdoing: stop` | — |
 
-自訂標頭的作用：跨站網頁無法在不觸發 CORS preflight 的情況下加上自訂標頭，而伺服器從不回應 preflight，所以三個有副作用的端點不會被其他網站觸發。
+自訂標頭的作用：跨站網頁無法在不觸發 CORS preflight 的情況下加上自訂標頭，而伺服器從不回應 preflight，所以兩個有副作用的端點不會被其他網站觸發。
 
 ## 11. 內嵌資源與建置管線
 
@@ -356,14 +367,12 @@ flowchart LR
   subgraph src["真源：skills/myoffice/"]
     PUB["public/"]
     AST["assets/"]
-    SJ["scenes.json"]
     PKG["package.json<br/>version"]
   end
   SYNC["scripts/sync-static.sh<br/>（--check 只比對）"]
   subgraph st["內嵌副本：go-app/static/（進版控）"]
     SPUB["public/"]
     SAST["assets/"]
-    SSJ["scenes.json"]
     VER["VERSION"]
   end
   BUILD["go build -o whatsmyagentdoing ."]
@@ -371,15 +380,12 @@ flowchart LR
 
   PUB --> SYNC
   AST --> SYNC
-  SJ --> SYNC
   PKG -->|"sed 抽 version"| SYNC
   SYNC --> SPUB
   SYNC --> SAST
-  SYNC --> SSJ
   SYNC --> VER
   SPUB --> BUILD
   SAST --> BUILD
-  SSJ --> BUILD
   VER --> BUILD
   BUILD --> BIN
 ```
@@ -388,6 +394,7 @@ flowchart LR
 - `--check` 只比對，有漂移以非零結束，給開發檢查與 CI 用
 - 版本號只有 Go 端讀純文字 `VERSION`，不解析 `package.json`；`embeddedVersion` 在套件初始化時決定，整個行程生命週期不變。所以 `Update()` 要回報新版本時改讀磁碟上同步後的 `static/VERSION`
 - 前端改動的正確順序：`npm run build`（上層）→ `scripts/sync-static.sh` → `go build`。忘記同步，執行檔帶的就是舊 bundle
+- 夜市場景的定義 `web/street.js` 不單獨同步：`npm run build` 以 esbuild 把它跟 `web/office3d.js` 打成 `public/office3d.js`，再隨 `public/` 進 `static/`。可下載場景包的目錄 `scenes.json` 已刪除
 
 ## 12. 安全邊界
 
@@ -395,10 +402,8 @@ flowchart LR
 - 不送任何 `Access-Control-*` 標頭，跨站無法讀 `/api/sessions` 與 `/events`
 - 有副作用的 POST 端點要求自訂標頭
 - 內嵌檔：`path.Clean` 後要求仍以掛載點（`public/`、`assets/`）為前綴、`fs.ValidPath`、非目錄、副檔名白名單；結尾斜線與空路徑回 404
-- 場景檔：`filepath.Clean` 後要求以場景目錄加分隔符為前綴、副檔名白名單；場景 id 先過 `^[a-z0-9-]+$`
-- 場景包：URL 固定來自內嵌 `scenes.json` 加 `config.go` 的 release 位址、強制 https、上限 30 MB、先比對 SHA-256 再解壓；`untar` 只收一般檔（`TypeReg`）、擋 `..` 與絕對路徑、副檔名白名單（`.json`、`.glb`、`.png`、`.txt`）、寫入前再驗目的路徑；解到暫存目錄驗過 `manifest.json` 才 rename
 - 外部程序只有四處：開瀏覽器（`open`／`xdg-open`／`cmd /c start`）、重啟自身（`os.Executable()` 加原參數）、`git pull --ff-only --quiet`、`bash scripts/sync-static.sh` 與 `go build`。全部是固定參數陣列，不受請求內容控制；`go` 以 `exec.LookPath` 找
-- 執行時不寫任何倉庫檔案；唯一會寫的目錄是 `~/.whatsmyagentdoing/scenes/`，以及 `--update` 時的 clone 與執行檔本身
+- 執行時不寫任何倉庫檔案；唯一會寫的是 `--update` 時的 clone 與執行檔本身
 
 ## 13. 環境變數
 
@@ -408,8 +413,8 @@ flowchart LR
 | `WMAD_SRC` | 指定 `go-app/` 原始碼目錄給 `--update` 用；未設定時看執行檔所在層與工作目錄 |
 | `WMAD_NO_UPDATE_CHECK` | 設定後 `CheckLatest` 直接回空，完全不連 GitHub |
 | `WMAD_LATEST_VERSION` | 測試用：假裝最新版本 |
-| `WMAD_SCENES_LOCAL` | 測試用：從本機資料夾讀場景包，不下載 |
 | （非環境變數）`config.go` 的 `AutoUpdateCheck` | `true` 時自動檢查新版（頁面載入、每 30 分鐘、CLI 啟動）；預設 `false` 只手動 |
+| （非環境變數）`config.go` 的 `StreetOverflowMax`、`StreetVisitorStay` | 夜市路邊位上限（預設 6，0 表示不開放）、半點訪客停留時間（預設 5 分鐘，0 表示關閉）；經 `/api/street` 帶給前端，改完要重建 |
 
 Node 版的 `WMAD_ROOT` 已隨 ADR-0004 移除；`WMAD_HEADED`、`WMAD_SCREENSHOTS` 是 Playwright 測試用，Go 版不涉及。
 
@@ -442,7 +447,7 @@ go build -o whatsmyagentdoing .
 ```
 
 - 需求：Go 1.22 以上；執行時不需 Node.js，也不需要 clone
-- 測試只用標準函式庫 `testing`：`parsers`／`lang`／`watcher`／`server`／`scenes`／`update`／`demo`／`main` 各有單元測試，`functional_test.go` 以 `httptest` 走真實 listener（含 SSE 推送、shutdown 鉤子），非 `-short` 時另 `go build` 一份執行檔驗 `--json`、`--scenes`、`--stop`、啟動橫幅、Already running、連接埠退讓。Watcher 測試以 package 變數改指暫存目錄，不碰真實 log；全部不連網（`WMAD_NO_UPDATE_CHECK=1`）
+- 測試只用標準函式庫 `testing`：`parsers`／`lang`／`watcher`／`server`／`dialogues`／`update`／`demo`／`main` 各有單元測試，`functional_test.go` 以 `httptest` 走真實 listener（含 SSE 推送、shutdown 鉤子），非 `-short` 時另 `go build` 一份執行檔驗 `--json`、`--stop`、啟動橫幅、Already running、連接埠退讓。Watcher 測試以 package 變數改指暫存目錄，不碰真實 log；全部不連網（`WMAD_NO_UPDATE_CHECK=1`）
 - 與 Node 版的一致性仍靠兩版各跑 `--json --hours 72`，以 `key` 配對後逐欄比對
 - 前端打包（`npm run build`）與瀏覽器測試（`npm run test:ui`）在 `skills/myoffice/` 用 Node 跑
 
@@ -462,5 +467,5 @@ go build -o whatsmyagentdoing .
 | 語言猜測：每則最低權重、採信票數、停用詞最低票 | 6、2、3 | `lang.go`、`server.go` |
 | 版本檢查：逾時、回應上限、快取 | 4 秒、64 KB、30 分鐘 | `update.go` |
 | 更新：`git pull`、同步、`go build` 逾時 | 60 秒、60 秒、5 分鐘 | `update.go` |
-| 場景包：大小上限、下載逾時 | 30 MB、5 分鐘 | `scenes.go` |
+| 夜市：路邊位上限、半點訪客停留 | 6、5 分鐘 | `config.go` |
 | Demo：tick、一輪長度 | 0.5 秒、31 秒 | `demo.go` |

@@ -1,6 +1,6 @@
 # whatsmyagentdoing（Go 版）
 
-skill 呼叫的後端：`skills/myoffice/bin/whatsmyagentdoing` 就是這裡建出來的執行檔。只用 Go 標準函式庫，沒有第三方依賴。網頁、模型、場景目錄與版本號都以 `go:embed` 包在執行檔裡，**執行時不讀 go-app/ 以外的任何檔案**，執行檔可以單獨複製到任何地方使用。
+skill 呼叫的後端：`skills/myoffice/bin/whatsmyagentdoing` 就是這裡建出來的執行檔。只用 Go 標準函式庫，沒有第三方依賴。網頁、模型與版本號都以 `go:embed` 包在執行檔裡，**執行時不讀 go-app/ 以外的任何檔案**，執行檔可以單獨複製到任何地方使用。
 
 ## 需求
 
@@ -19,7 +19,7 @@ scripts/installSkill.sh     # 複製到 skills/myoffice/bin/，SKILL.md 呼叫�
 
 ```bash
 cd <clone>/go-app
-scripts/sync-static.sh          # 把 skills/myoffice/ 的 public/、assets/、scenes.json、版本號同步到 static/
+scripts/sync-static.sh          # 把 skills/myoffice/ 的 public/、assets/、版本號同步到 static/
 go build -o whatsmyagentdoing .
 ```
 
@@ -43,9 +43,6 @@ go build -o whatsmyagentdoing .
 | `--demo` | 用虛構團隊取代真實 session |
 | `--stop` | 停止執行中的儀表板 |
 | `--update` | `git pull`、重新同步 `static/`、重新 `go build`，並停掉執行中的儀表板 |
-| `--scenes` | 列出 3D 場景（已安裝與可下載） |
-| `--scene <id>` | 需要時下載場景，再以該場景開啟 |
-| `--remove-scene <id>` | 刪除已下載的場景 |
 
 ## 重啟
 
@@ -80,10 +77,9 @@ go build -o whatsmyagentdoing .
 | `WMAD_SRC` | 指定 go-app/ 原始碼目錄，給 `--update` 用；未設定時看執行檔所在層與工作目錄 |
 | `CLAUDE_CONFIG_DIR` / `CODEX_HOME` / `GEMINI_CLI_HOME` | 改 log 來源目錄 |
 | `WMAD_NO_UPDATE_CHECK=1` | 完全不連 GitHub 檢查版本 |
-| `WMAD_SCENES_LOCAL=<dir>` | 從本機目錄讀場景包，測試安裝流程用 |
 | `WMAD_LATEST_VERSION=<ver>` | 假裝遠端版本，測試更新提示用 |
 
-下載的場景包放 `~/.whatsmyagentdoing/scenes/`。
+可下載的場景包已移除；舊版留下的 `~/.whatsmyagentdoing/scenes/` 不再使用，可以手動刪除。
 
 ## 與原 Node 版的已知差異
 

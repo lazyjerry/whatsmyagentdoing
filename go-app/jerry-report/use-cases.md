@@ -9,7 +9,7 @@
 | 維護者 | 本專案的開發者：同步內嵌資源、建置執行檔、檢查漂移 |
 | 瀏覽器 | 執行前端；行為與 Node 版相同，不在本報告範圍 |
 | Session 紀錄 | 三種 agent 寫在磁碟上的 JSONL；被動資料來源，只讀 |
-| GitHub | 版本檢查讀 raw `package.json`；場景包從 releases 下載 |
+| GitHub | 版本檢查讀 raw `package.json` |
 | 工具鏈 | `git`、`bash`、`go`：`--update` 時由程式呼叫；只有執行檔還在 clone 的 `go-app/` 裡才用得到 |
 
 ## Use case 圖
@@ -30,7 +30,7 @@ flowchart LR
     uc04(["UC-04 檢查新版並更新"])
     uc05(["UC-05 取得 JSON 快照"])
     uc06(["UC-06 Demo 模式"])
-    uc07(["UC-07 管理 3D 場景"])
+    uc07(["UC-07 夜市場景"])
     uc08(["UC-08 隱私模式"])
     uc09(["UC-09 建置與同步內嵌資源"])
   end
@@ -45,7 +45,6 @@ flowchart LR
   agent --> uc05
   user --> uc06
   user --> uc07
-  agent --> uc07
   user --> uc08
   maint --> uc09
 
@@ -54,12 +53,11 @@ flowchart LR
   uc06 -.->|extend| uc01
   uc08 -.->|extend| uc01
   uc08 -.->|extend| uc05
-  uc07 -.->|extend| uc01
+  uc07 -.->|extend| uc02
   uc02 --> logs
   uc05 --> logs
   uc04 --> gh
   uc04 --> tools
-  uc07 --> gh
   uc09 -.->|產出執行檔給| uc01
   uc04 -.->|重用| uc09
 ```
@@ -74,7 +72,7 @@ flowchart LR
 | UC-04 | 檢查新版並更新 | 使用者／AI Agent | 頁面「檢查更新」／Update 鈕、`--update` | `Updater`、`/api/version`、`/api/update`、`onRestart` | [UC-04](UC-04-check-and-update.md) |
 | UC-05 | 取得 JSON 快照 | AI Agent | `--json` | `Watcher.Tick` 兩次 → `snapshot()` | [UC-05](UC-05-json-snapshot.md) |
 | UC-06 | Demo 模式 | 使用者 | `--demo` | `DemoWatcher` | [UC-06](UC-06-demo-mode.md) |
-| UC-07 | 管理 3D 場景 | 使用者／AI Agent | 場景選單、`--scenes`、`--scene`、`--remove-scene` | `Scenes`、`/api/scenes*`、`/scenes/<id>/**` | [UC-07](UC-07-manage-scenes.md) |
+| UC-07 | 夜市場景 | 使用者 | 辦公室檢視載入、每份快照、點 NPC | `/api/street`（`streetPayload`）、前端 `Office.update`、`groupOf` | [UC-07](UC-07-night-market-scene.md) |
 | UC-08 | 隱私模式 | 使用者 | `--private` | `view()` | [UC-08](UC-08-private-mode.md) |
 | UC-09 | 建置與同步內嵌資源 | 維護者 | `scripts/sync-static.sh`、`go build` | `scripts/sync-static.sh`、`embed.go` | [UC-09](UC-09-build-and-sync.md) |
 
@@ -82,7 +80,7 @@ flowchart LR
 
 - UC-01 啟動後必然進入 UC-02（頁面連 SSE）；`AutoUpdateCheck` 開啟時啟動也會做一次版本提示（UC-04 的檢查部分）
 - UC-06、UC-08 是 UC-01 的旗標變體：換掉資料來源（`Source` 介面）或遮蔽內容（`view()`），其餘流程相同；UC-08 同樣作用於 UC-05 的輸出
-- UC-07 的 `--scene` 旗標在 UC-01 之前先安裝場景，再帶 query 開啟網址
+- UC-07 是 UC-02 在辦公室檢視的呈現：同一份快照依狀態群組分到夜市各攤；伺服器端只多一個 `/api/street` 提供 NPC 文字與兩個設定值
 - UC-04 的更新路徑重用 UC-09 的同步腳本與 `go build`，差別是由程式呼叫而非維護者手動
 - UC-09 產出的執行檔是 UC-01 的前提；維護者改了前端卻忘記同步，執行檔帶的仍是舊 bundle
 
@@ -92,7 +90,7 @@ flowchart LR
 
 | 上層 | 名稱 | 伺服器端的參與 |
 |---|---|---|
-| [UC-07](../../jerry-report/UC-07-switch-view.md) | 切換視圖與畫質 | 服務 `/office.js`、`/office3d.js`、`/assets/**` |
+| [UC-07](../../jerry-report/UC-07-switch-view.md) | 切換視圖與畫質（畫質與 2D 已移除） | 服務 `/office.js`、`/office3d.js`、`/assets/**` |
 | [UC-09](../../jerry-report/UC-09-popout.md) | 子母畫面 | 服務 `/popout.js`、`/?pip=1` 同一頁 |
 | [UC-10](../../jerry-report/UC-10-language.md) | 選擇介面語言 | `snapshot().lang` 的猜測在 `lang.go`（structure.md 第 9 節） |
 | [UC-11](../../jerry-report/UC-11-notifications.md) | 完成通知 | 無 |

@@ -53,18 +53,12 @@ description: 開啟一個即時的「辦公室」畫面，顯示這台機器上�
 
 然後告知已停止。
 
-## 場景（3D）
+## 場景
 
-除了內建的辦公室，還有可下載的 3D 場景（例如海盜灣）。當使用者要換一個場景、
-換個外觀、提到「DLC」，或直接指名（「海盜船」、「pirate」）時：
-
-1. `"<base directory>/bin/whatsmyagentdoing" --scenes`：列出所有場景、是否已安裝、
-   下載大小。請使用它印出的 id，不要用猜的。
-2. `"<base directory>/bin/whatsmyagentdoing" --scene <id>`（在背景執行）：需要時先下載
-   （經總和檢查碼驗證，只含資料檔），再以該場景開啟辦公室。`--scene office`
-   可切回辦公室。
-
-場景只在使用者要求時才下載。`--remove-scene <id>` 可刪除場景。
+畫面只有內建的辦公室（設定裡可切 2D／3D），沒有其他場景可以切換或下載。
+使用者要換場景、提到「DLC」或舊的 `--scene`／`--scenes`／`--remove-scene` 時，
+告知這些旗標已移除。舊版下載的場景包留在 `~/.whatsmyagentdoing/scenes/`，不再使用，
+使用者同意後才可以刪除。
 
 使用者可能會要求的選項：
 
