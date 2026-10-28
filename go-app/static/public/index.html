@@ -20,6 +20,7 @@
     --done: #5b8a4a;
     --error: #d1453b;
     --idle: #a3a39d;
+    --alert: #c2418f;
     --claude: #c96442;
     --codex: #10a37f;
     --gemini: #4f7cf0;
@@ -41,6 +42,7 @@
       --done: #86b872;
       --error: #f0675d;
       --idle: #6b6a65;
+      --alert: #e46cb3;
       --shadow: none;
     }
   }
@@ -84,12 +86,8 @@
   .setting-group + .setting-group { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
   .setting-label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 9px; }
   #officeGroup[hidden] + .setting-group { margin-top: 0; padding-top: 0; border-top: 0; }
-  #sceneSeg { display: grid; grid-template-columns: 1fr 1fr; border: 0; padding: 0; gap: 6px; }
-  #sceneSeg button { text-align: left; padding: 8px 10px; background: var(--bg); }
-  #sceneSeg button.on { background: var(--line); color: var(--ink); box-shadow: inset 0 0 0 1px var(--faint); }
   #qualSeg { display: flex; }
   #qualSeg button { flex: 1; }
-  .scene-label { margin-top: 14px; }
   .setting-toggles { display: grid; gap: 12px; margin-top: 14px; }
   .setting-toggles .tog { color: var(--ink); gap: 8px; }
   .status-label { margin-top: 14px; margin-bottom: 0; }
@@ -130,6 +128,10 @@
   .agent-logo { width: 20px; height: 20px; object-fit: contain; padding: 1px; flex: none; }
   .platform, .kind { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; flex: none; align-self: flex-start; }
   .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  /* Warnings (near auto-compact, long turn): apart from the status colours. */
+  .alert { font-size: 11px; color: var(--alert); border: 1px solid var(--alert); border-radius: 4px; padding: 0 5px; flex: none; align-self: flex-start; }
+  .legend .alert-key { color: var(--alert); }
+  .alert-chip { font: 700 10px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #f4f4f0; background: #16181e; border: 1.5px solid var(--alert); border-radius: 4px; padding: 0 4px; }
   /* hover card only: the fields the compact card leaves out */
   .meta { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; font-size: 11.5px; color: var(--muted); }
   .meta dt { color: var(--faint); white-space: nowrap; }
@@ -193,6 +195,9 @@
   .tip { position: fixed; z-index: 10; width: 320px; max-width: calc(100vw - 24px); pointer-events: none; display: none; }
   .tip.pinned { pointer-events: auto; }
   .tip .card { box-shadow: 0 8px 30px rgba(0,0,0,.18); }
+  .card.zone { gap: 6px; }
+  .card.zone .zone-title { font-weight: 650; }
+  .card.zone p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
   .legends { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 32px; margin-top: 10px; }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: 12px; }
   .legend span { display: inline-flex; align-items: center; gap: 5px; }
@@ -253,10 +258,6 @@
             <div class="seg" id="qualSeg" role="group" aria-labelledby="qualLabel">
               <button data-v="mid" data-t="qMid"></button>
               <button data-v="high" data-t="qHigh"></button>
-            </div>
-            <div id="sceneGroup">
-              <span class="setting-label scene-label" id="sceneLabel" data-t="scene"></span>
-              <div class="seg" id="sceneSeg" role="group" aria-labelledby="sceneLabel"></div>
             </div>
           </div>
           <div class="setting-group">
@@ -347,12 +348,12 @@ function applyLang(code) {
   document.querySelectorAll('[data-t]').forEach((el) => (el.textContent = L[el.dataset.t]));
   const legend = document.getElementById('legend');
   if (legend) legend.innerHTML = ['thinking', 'tool', 'typing', 'waiting', 'done', 'error']
-    .map((k) => `<span data-s="${k}"><span class="dot" style="color:var(--s)"></span>${L[k]}</span>`).join('');
+    .map((k) => `<span data-s="${k}"><span class="dot" style="color:var(--s)"></span>${L[k]}</span>`).join('')
+    + ALERT_KEYS.map(([k, label]) => `<span class="alert-key"><span class="alert-chip">${esc(OFFICE_ALERT_TEXT(k))}</span> ${L[label]}</span>`).join('');
   const sel = document.getElementById('langSel');
   if (sel) sel.options[0].textContent = `🌐 ${L.auto}`;
   if (typeof office !== 'undefined' && office) office.offDutyLabel = L.wentHome;
   if (typeof syncControls === 'function') syncControls();
-  if (typeof renderSceneSel === 'function') renderSceneSel();
   if (typeof renderVersion === 'function') renderVersion();
 }
 
@@ -363,7 +364,7 @@ const store = (() => {
   return { get, set };
 })();
 
-const PREF_DEFAULTS = { view: 'office', quality: 'high', scene: 'office', showSub: false, showAgent: true, lang: 'auto',
+const PREF_DEFAULTS = { view: 'office', quality: 'high', showSub: false, showAgent: true, lang: 'auto',
   // Agents and platforms are multi-select; storing what is unchecked keeps a newly added agent visible.
   hiddenAgents: [], hiddenPlatforms: [],
   // One switch per status group (the counts in the header and the settings panel share them).
@@ -387,7 +388,7 @@ function readPreferences() {
 const PIP = new URLSearchParams(location.search).get('pip') === '1';
 if (PIP) document.body.classList.add('pip');
 
-// ?view=office&quality=high&scene=pirate (what `--scene` opens) sets the prefs.
+// ?view=office&quality=high&lang=zh-TW sets the prefs.
 {
   const q = new URLSearchParams(location.search);
   if (PIP) {
@@ -395,13 +396,12 @@ if (PIP) document.body.classList.add('pip');
       for (const [k, v] of Object.entries(JSON.parse(q.get('prefs')) || {})) if (validPreference(k, v)) store.set(k, v);
     } catch { /* malformed preferences use the saved defaults */ }
   }
-  for (const k of ['view', 'quality', 'scene', 'lang']) if (validPreference(k, q.get(k))) store.set(k, q.get(k));
+  for (const k of ['view', 'quality', 'lang']) if (validPreference(k, q.get(k))) store.set(k, q.get(k));
   if (location.search) history.replaceState(null, '', location.pathname + (PIP ? '?pip=1' : ''));
 }
 
 const state = {
   ...readPreferences(),
-  scenes: [],
   data: { now: Date.now(), sessions: [] },
   skew: 0,
   prev: new Map(),
@@ -415,6 +415,10 @@ const AGENT_NAME = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', opencod
 const PLATFORM_NAME = { vscode: 'VS Code', cli: 'CLI', sdk: 'SDK', desktop: 'Desktop' };
 const PROMPT_ICON = { command: '⌨️', notification: '🔔' };
 const PROMPT_KIND_KEY = { command: 'kindCommand', notification: 'kindNotification' };
+// Warnings beside the status (server: config.go), in legend order.
+const ALERT_KEYS = [['compact', 'alertCompact'], ['longTurn', 'alertLongTurn']];
+const contextPct = (s) => Math.round((s.contextTokens / s.compactAt) * 100);
+const kTokens = (n) => `${Math.round(n / 1000)}k`;
 const onAgent = (s) => !state.hiddenAgents.includes(s.agent);
 function onPlatform(s) {
   const p = s.platform === 'vscode' || s.platform === 'cli' ? s.platform : 'other';
@@ -455,7 +459,8 @@ function ago(t, now) {
 }
 
 function timeLabel(s, now) {
-  if ((ACTIVE.has(s.status) || s.status === 'waiting') && s.turnStartedAt) return dur(now - s.turnStartedAt);
+  // turnStartApprox: a big log whose tail holds no prompt, so the turn is at least this old.
+  if ((ACTIVE.has(s.status) || s.status === 'waiting') && s.turnStartedAt) return (s.turnStartApprox ? '≥ ' : '') + dur(now - s.turnStartedAt);
   return s.lastEventAt ? ago(s.lastEventAt, now) : '';
 }
 
@@ -493,7 +498,9 @@ function agentLogo(agent) {
 function tags(s) {
   const platform = s.platform ? `<span class="platform">${esc(PLATFORM_NAME[s.platform] || s.platform)}</span>` : '';
   const kind = PROMPT_ICON[s.promptKind] ? `<span class="kind">${PROMPT_ICON[s.promptKind]} ${esc(L[PROMPT_KIND_KEY[s.promptKind]])}</span>` : '';
-  return platform || kind ? `<div class="tags">${platform}${kind}</div>` : '';
+  const alerts = ALERT_KEYS.filter(([k]) => (s.alerts || []).includes(k))
+    .map(([k, label]) => `<span class="alert" data-a="${k}"><span class="alert-chip">${esc(OFFICE_ALERT_TEXT(k, s))}</span> ${esc(L[label])}</span>`).join('');
+  return platform || kind || alerts ? `<div class="tags">${platform}${kind}${alerts}</div>` : '';
 }
 
 // Everything the server sends that the compact card has no room for; shown
@@ -506,6 +513,7 @@ function meta(s, now) {
   if (s.workspace && s.workspace !== s.cwd) rows.push([L.workspace, s.workspace, 'mono']);
   if (s.startedAt) rows.push([L.started, ago(s.startedAt, now)]);
   if (s.lastEventAt) rows.push([L.lastEvent, ago(s.lastEventAt, now)]);
+  if (s.contextTokens) rows.push([L.context, s.compactAt ? `${contextPct(s)}% (${kTokens(s.contextTokens)} / ${kTokens(s.compactAt)})` : kTokens(s.contextTokens)]);
   rows.push([L.sessionId, s.sessionId || s.id, 'mono']);
   if (s.parentId) rows.push([L.parentId, s.parentId, 'mono']);
   return `<dl class="meta">${rows.map(([k, v, c]) => `<dt>${esc(k)}</dt><dd${c ? ` class="${c}"` : ''}>${esc(v)}</dd>`).join('')}</dl>`;
@@ -690,7 +698,6 @@ function syncControls() {
   document.querySelectorAll('#viewSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.view));
   document.querySelectorAll('#qualSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.quality));
   document.getElementById('officeGroup').hidden = state.view !== 'office';
-  document.getElementById('sceneGroup').hidden = state.quality !== 'high';
   // Next to "Settings": what is still checked, for whichever of the two filters is narrowed.
   const checked = (names, hidden) => (hidden.length ? Object.keys(names).filter((k) => !hidden.includes(k)).map((k) => names[k]).join('/') || '–' : '');
   const activeFilter = document.getElementById('activeFilter');
@@ -727,8 +734,15 @@ function placeTip() {
   tip.style.left = Math.max(8, x) + 'px';
   tip.style.top = y + 'px';
 }
+// Clicking a place in the office (boards, booth, TV, fridge) explains what the area is for.
+const ZONE_TEXT = { whiteboard: 'zoneWhiteboard', booth: 'zoneBooth', tv: 'zoneTv', fridge: 'zoneFridge', meeting: 'zoneMeeting' };
+function zoneCard(id) {
+  const k = ZONE_TEXT[id];
+  return `<div class="card zone"><div class="zone-title">${esc(L[k])}</div><p>${esc(L[k + 'Info'])}</p></div>`;
+}
 function refreshTip() {
   if (!tipKey) return;
+  if (tipKey.startsWith('zone:')) { tip.innerHTML = zoneCard(tipKey.slice(5)); placeTip(); return; }
   const s = state.data.sessions.find((x) => x.key === tipKey);
   if (!s) return hideTip();
   tip.innerHTML = card(s, Date.now() - state.skew, true);
@@ -750,6 +764,13 @@ const officeOpts = {
     tip.style.display = 'block';
     refreshTip();
   },
+  onZone(id, at) {
+    if (!ZONE_TEXT[id]) return;
+    tipPinned = true; tip.classList.add('pinned');
+    tipKey = 'zone:' + id; tipAt = at;
+    tip.style.display = 'block';
+    refreshTip();
+  },
 };
 let office = null;
 let officeKind = null;
@@ -763,8 +784,7 @@ function setLoading(on, text) {
 }
 async function makeOffice() {
   const high = state.quality === 'high';
-  const scene = high && state.scene !== 'office' && state.scenes.some((x) => x.id === state.scene) ? state.scene : 'office';
-  const kind = high ? `high:${scene}` : 'mid';
+  const kind = high ? 'high' : 'mid';
   if (kind === officeKind) return;
   officeKind = kind;
   setLoading(true, high ? L.loading3d : L.loading2d);
@@ -773,10 +793,6 @@ async function makeOffice() {
   if (high) {
     try {
       Cls = (await import('/office3d.js')).Office3D;
-      if (scene !== 'office') {
-        const m = await fetch(`/scenes/${scene}/manifest.json`).then((r) => r.json());
-        opts.scene = { ...m, base: `/scenes/${scene}/` };
-      }
     } catch (e) { console.error(e); Cls = window.Office; }
     if (officeKind !== kind) return;
   }
@@ -804,48 +820,6 @@ async function makeOffice() {
   setLoading(false);
 }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideTip(); });
-
-// Scenes (3D only): the built-in office plus any installed scene packs.
-const sceneSel = document.getElementById('sceneSeg');
-state.available = [];
-function renderSceneSel() {
-  const name = (x) => (x.name && (x.name[langCode] || x.name.en)) || x.id;
-  const kb = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
-  const current = state.scenes.some((x) => x.id === state.scene) ? state.scene : 'office';
-  const btn = (v, label, title = '') =>
-    `<button data-v="${esc(v)}" class="${v === current ? 'on' : ''}" aria-pressed="${v === current}"${title ? ` title="${esc(title)}"` : ''}>${label}</button>`;
-  sceneSel.innerHTML = btn('office', `🏢 ${esc(L.office)}`) +
-    state.scenes.map((x) => btn(x.id, `${esc(x.icon || '🗺️')} ${esc(name(x))}`, x.credits || '')).join('') +
-    state.available.map((x) => btn(`dl:${x.id}`, `⬇ ${esc(x.icon || '')} ${esc(name(x))} <small>${kb(x.size)}</small>`, `${L.dl} ${kb(x.size)}`)).join('');
-}
-function loadScenes() {
-  return fetch('/api/scenes').then((r) => r.json()).then((d) => {
-    state.scenes = d.installed || [];
-    state.available = d.available || [];
-    renderSceneSel();
-  }).catch(() => {});
-}
-sceneSel.addEventListener('click', async (e) => {
-  const b = e.target.closest('button');
-  if (!b || b.classList.contains('on') || sceneSel.dataset.busy) return;
-  let id = b.dataset.v;
-  hideTip();
-  if (id.startsWith('dl:')) {
-    // A scene pack: download it (the server checks its checksum), then switch.
-    id = id.slice(3);
-    sceneSel.dataset.busy = '1';
-    setLoading(true, L.installing);
-    const r = await fetch(`/api/scenes/install?id=${encodeURIComponent(id)}`, { method: 'POST', headers: { 'x-whatsmyagentdoing': 'install' } })
-      .then((x) => x.json()).catch(() => ({ ok: false }));
-    await loadScenes();
-    delete sceneSel.dataset.busy;
-    if (!r.ok) { setLoading(true, L.installFailed); setTimeout(() => setLoading(false), 2000); renderSceneSel(); return; }
-  }
-  state.scene = id; store.set('scene', id); renderSceneSel(); makeOffice();
-});
-// Know the installed scenes before building the first office, so a saved
-// scene choice doesn't build the default office first and then swap.
-const scenesReady = loadScenes();
 
 // ---- version + one-click update
 const verEl = document.getElementById('ver');
@@ -955,7 +929,7 @@ popout = new OfficePopout({
   text: (key) => L[key],
   changed: () => { syncControls(); render(); },
 });
-// Both windows share preferences; keep filters, language, scene and badges in
+// Both windows share preferences; keep filters, language, 2D/3D and badges in
 // sync even when changes come from the compact window or another open tab.
 window.addEventListener('storage', (e) => {
   if (e.key !== null && !Object.keys(PREF_DEFAULTS).some((k) => e.key === 'wmad.' + k)) return;
@@ -964,13 +938,12 @@ window.addEventListener('storage', (e) => {
   hideTip();
   applyLang(chooseLang(state.data.lang));
   syncControls();
-  renderSceneSel();
   makeOffice();
   render();
 });
 applyLang(chooseLang(null));
 syncControls();
-scenesReady.then(() => makeOffice());
+makeOffice();
 connect();
 setInterval(tickTimes, 1000);
 </script>

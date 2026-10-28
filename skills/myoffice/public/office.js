@@ -1,6 +1,7 @@
-// Isometric office: agents that are working sit at cubicle desks; a few that
-// are off duty wander between the pantry, lounge, meeting room and ping-pong
-// table. Plain canvas 2D with local provider logos, no dependencies.
+// Isometric office: agents that are working sit at cubicle desks, those
+// waiting on you queue at the phone booth and those with a warning argue in
+// the meeting room. Finished ones scroll phones or watch TV on the sofas, idle ones wander the
+// pantry and lounge. Plain canvas 2D with local provider logos, no dependencies.
 (() => {
   'use strict';
 
@@ -10,6 +11,7 @@
   const WORKING = new Set(['thinking', 'tool', 'typing', 'waiting', 'error']);
   const MAX_WANDERERS = 7;
   const SPEED = 2.1; // tiles / second
+  const DOZE_AFTER = 10 * 60_000; // finished this long ago: watch TV instead of scrolling
 
   const SKIN = ['#f3cfb0', '#e5b38f', '#c98d66', '#9a6646', '#6e4630', '#f7dcc7'];
   const HAIR = ['#2a2019', '#4b3020', '#8a4b2a', '#c99a5b', '#1c1c1c', '#8c8c8c', '#a33a2c', '#3d3550'];
@@ -45,11 +47,78 @@
     done: '#5f9a4c', error: '#de4b40', interrupted: '#9b9a94', idle: '#9b9a94',
   };
 
+  // Warnings beside the status (server: config.go): the context is close to
+  // where the CLI compacts on its own, or this turn has been working for long.
+  // Drawn as monospace chips with a magenta ring, apart from the status bubble.
+  const ALERT_RING = '#c2418f';
+  const ALERT_LEGEND = { compact: 'ctx %', longTurn: 'min' };
+  function alertText(k, s, now = Date.now()) {
+    if (!s) return ALERT_LEGEND[k];
+    if (k === 'compact') return s.compactAt ? `ctx ${Math.round((100 * (s.contextTokens || 0)) / s.compactAt)}%` : 'ctx';
+    if (k === 'longTurn') {
+      const m = s.turnStartedAt ? Math.max(0, Math.floor((now - s.turnStartedAt) / 60000)) : 0;
+      return m > 99 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m` : `${m}m`;
+    }
+    return '';
+  }
+
   const ACT_EMOJI = {
     coffee: '☕', water: '💧', fridge: '🍎', sink: '🫧', stool: '💬', couch: '💬', beanbag: '🎧',
-    window: '☁️', read: '📖', whiteboard: '✏️', meeting: '💬', arcade: '🎮', pingpong: '🏓', plant: '🌱',
-    vending: '🥤', foosball: '⚽', phone: '📞',
+    read: '📖', arcade: '🎮', scroll: '📱', tv: '📺',
   };
+
+  // The big sales board on the wall by the desks, drawn into a 1024 × 384
+  // box. Shared by the 2D wall and the 3D texture.
+  function drawBoard(c) {
+    const W = 1024, H = 384;
+    c.save();
+    c.fillStyle = '#fbfbf8'; c.fillRect(0, 0, W, H);
+    c.textBaseline = 'alphabetic';
+    const ink = (col, px, w = 700) => { c.fillStyle = col; c.font = `${w} ${px}px "Marker Felt", "Comic Sans MS", ui-sans-serif, system-ui, sans-serif`; };
+    ink('#1f4fa8', 42, 800); c.fillText('Q4 SALES  ★  KPI', 28, 56);
+    c.strokeStyle = '#1f4fa8'; c.lineWidth = 4;
+    c.beginPath(); c.moveTo(28, 68); c.lineTo(420, 68); c.stroke();
+    const kpi = [['Revenue', '▲ 128%', '#2e8b57'], ['Deals won', '342', '#1c1c1a'], ['MRR', '$42.7k', '#1c1c1a'], ['Churn', '▼ 3.1%', '#c0392b'], ['Tokens', '9.8M', '#6a4bc4']];
+    kpi.forEach(([k, v, col], i) => {
+      ink('#3a3a38', 26, 600); c.fillText(k, 32, 112 + i * 48);
+      ink(col, 30, 800); c.fillText(v, 210, 112 + i * 48);
+    });
+    // bar chart: revenue by month, the last one circled
+    const bars = [38, 52, 47, 66, 80, 118];
+    const bx = 440, by = 330;
+    c.strokeStyle = '#3a3a38'; c.lineWidth = 3;
+    c.beginPath(); c.moveTo(bx, 90); c.lineTo(bx, by); c.lineTo(bx + 300, by); c.stroke();
+    bars.forEach((v, i) => {
+      c.fillStyle = i === bars.length - 1 ? '#c96442' : '#3b8ee0';
+      c.fillRect(bx + 16 + i * 46, by - v * 1.9, 30, v * 1.9);
+      ink('#3a3a38', 18, 600); c.fillText(['J', 'A', 'S', 'O', 'N', 'D'][i], bx + 23 + i * 46, by + 24);
+    });
+    c.strokeStyle = '#c0392b'; c.lineWidth = 4;
+    c.beginPath(); c.ellipse(bx + 261, by - 236, 34, 26, 0, 0, Math.PI * 2); c.stroke();
+    ink('#c0392b', 24, 800); c.fillText('record!', bx + 220, by - 272);
+    // trend line with target
+    const lx = 790, ly = 250;
+    c.setLineDash([10, 8]); c.strokeStyle = '#9a9a96'; c.lineWidth = 3;
+    c.beginPath(); c.moveTo(lx, ly - 120); c.lineTo(lx + 200, ly - 120); c.stroke(); c.setLineDash([]);
+    ink('#9a9a96', 18, 600); c.fillText('target', lx + 140, ly - 128);
+    c.strokeStyle = '#2e8b57'; c.lineWidth = 5;
+    c.beginPath();
+    [0, 18, 10, 46, 38, 80, 74, 132].forEach((v, i) => (i ? c.lineTo(lx + i * 28, ly - v) : c.moveTo(lx, ly - v)));
+    c.stroke();
+    ink('#2e8b57', 26, 800); c.fillText('↗ +37% QoQ', lx, ly + 32);
+    // sticky notes
+    const note = (x, y, col, a, text) => {
+      c.save(); c.translate(x, y); c.rotate(a);
+      c.fillStyle = col; c.fillRect(-56, -40, 112, 80);
+      ink('#1c1c1a', 24, 800); c.textAlign = 'center'; c.fillText(text, 0, 8);
+      c.restore();
+    };
+    note(836, 64, '#ffe27a', -0.06, 'SHIP IT');
+    note(956, 70, '#a8e6a1', 0.05, 'TESTS ✓');
+    note(836, 338, '#ffb4c8', 0.04, 'OKR 92%');
+    note(956, 334, '#9fd3ff', -0.05, 'PR 128');
+    c.restore();
+  }
 
   function hash(str) {
     let h = 2166136261;
@@ -194,9 +263,10 @@
   // ---------------------------------------------------------------- office
 
   class Office {
-    constructor(root, { onHover, label, sublabel, onFrame, showAgent = true, compact = false } = {}) {
+    constructor(root, { onHover, onZone, label, sublabel, onFrame, showAgent = true, compact = false } = {}) {
       this.root = root;
       this.onHover = onHover || (() => {});
+      this.onZone = onZone || (() => {});
       this.label = label || ((s) => s.project || s.agent);
       this.sublabel = sublabel || (() => '');
       this.onFrame = onFrame;
@@ -209,6 +279,8 @@
       this.ctx = this.canvas.getContext('2d');
       this.people = new Map();
       this.deskOf = new Map();
+      this.queue = [];   // keys waiting on you, in line for the phone booth
+      this.meeting = []; // keys with a warning, in the meeting room
       this.offDuty = 0;
       this.first = true;
       this.visible = true;
@@ -254,7 +326,7 @@
       const podRows = Math.ceil(pods / podCols);
       const OW = 1.3 + (podCols - 1) * 4.2 + 3.9; // open office width
       const OD = podRows * 4.7 + 0.8;             // open office depth (pods)
-      const D = Math.max(OD + 3.6, 14.5);
+      const D = Math.max(OD + 5.5, 14.5);
       const RW = 7.2;                              // right column width
       const W = OW + RW;
       const MR = 5.2;                              // meeting room depth
@@ -269,7 +341,12 @@
       const props = [];
       const prop = (t, o) => props.push({ t, ...o });
       const solid = (x, y, w, d, pad) => grid.block(x, y, w, d, pad);
-      const poi = (x, y, act, face, opt = {}) => pois.push({ x, y, act, face, sit: 0, ...opt });
+      // Spots people pick while off duty, tagged with the area they belong to
+      // (sofa: finished; pantry and lounge: idle).
+      let zone = null;
+      const poi = (x, y, act, face, opt = {}) => pois.push({ x, y, act, face, sit: 0, zone, ...opt });
+      // Areas that explain themselves when clicked: a box on the floor plan.
+      const zones = [];
 
       // Long boxes are split into ~1 tile pieces so depth sorting against
       // people stays right along their length. `extra(x0, x1)` draws things on
@@ -315,50 +392,55 @@
       solid(OW - 2.3, 0.25, 0.75, 0.55);
       for (const [x, y] of [[0.45, 0.45], [0.45, OD - 0.2]]) { add(x + y, () => this.plant(x, y)); prop('plant', { x, y }); solid(x - 0.2, y - 0.2, 0.4, 0.4); }
       const windows = [];
-      for (let x = 1.0; x < OW - 2.6; x += 2.4) {
-        windows.push(x);
-        poi(x + 0.75, 0.75, 'window', 'back');
-      }
-      poi(0.95, OD - 0.2, 'plant', 'back');
+      for (let x = 1.0; x < OW - 2.6; x += 2.4) windows.push(x);
+      // big sales board on the left wall, beside the desks
+      const board = { y: 1.6, w: 3.8, z: 0.8, h: 1.4 };
+      prop('board', board);
+      zones.push({ id: 'whiteboard', x: 0, y: board.y, z: board.z, w: 0.1, d: board.w, h: board.h });
 
-      // ---- ping-pong corner
-      const tx = 2.4, ty = OD + 1.0;
-      add(tx + 1.3 + ty + 0.7, () => this.pingpong(tx, ty));
-      prop('pingpong', { x: tx, y: ty });
-      solid(tx, ty, 2.6, 1.4, 0.05);
-      poi(tx - 0.55, ty + 0.7, 'pingpong', 'side', { pair: 'pp' });
-      poi(tx + 3.15, ty + 0.7, 'pingpong', 'side', { pair: 'pp' });
-      const pp = { x0: tx - 0.2, x1: tx + 2.8, y: ty + 0.7 };
+      // ---- sofa corner (finished agents): one sofa to scroll a phone on, one
+      // facing the TV on the left wall
+      zone = 'sofa';
+      // A small office leaves this front strip deep: centre the corner in it.
+      const fy = OD + Math.max(0, (D - OD - 5.5) / 2);
+      const sy = fy + 0.5;
+      const s1x = 1.6;
+      add(s1x + sy, () => this.couch(s1x, sy));
+      prop('couch', { x: s1x, y: sy, w: 2.8, d: 0.8 });
+      solid(s1x, sy, 2.8, 0.8);
+      for (let k = 0; k < 3; k++) poi(s1x + 0.5 + k * 0.9, sy + 0.6, 'scroll', 'front', { sit: 0.36 });
+      // The TV sofa runs along y with its back to the right, facing the wall.
+      const s2x = s1x + 2.95, s2y = sy + 0.95, s2len = 2.6;
+      this.couchY(add, s2x, s2y, s2len);
+      prop('couch', { x: s2x, y: s2y, w: 0.8, d: s2len, rot: -Math.PI / 2 });
+      solid(s2x, s2y, 0.8, s2len);
+      for (let k = 0; k < 3; k++) poi(s2x + 0.35, s2y + (k + 0.5) * s2len / 3, 'tv', 'back', { sit: 0.36, yaw: -Math.PI / 2 });
+      const tv = { y: s2y + s2len / 2 - 0.8, w: 1.6 };
+      add(0.25 + tv.y + tv.w / 2, () => this.box(0.05, tv.y + 0.1, 0, 0.45, tv.w - 0.2, 0.45, this.shade(pal.deskTop, -10), pal.deskL, pal.deskR));
+      prop('tv', tv);
+      solid(0, tv.y + 0.1, 0.5, tv.w - 0.2);
+      zones.push({ id: 'tv', x: 0, y: tv.y, z: 0, w: 0.5, d: tv.w, h: 1.9 });
+      const tx = s1x + 0.7, ty = tv.y + 0.45;
+      add(tx + 0.8 + ty + 0.35, () => this.coffeeTable(tx, ty));
+      prop('coffeeTable', { x: tx, y: ty, w: 1.6, d: 0.7 });
+      solid(tx, ty, 1.6, 0.7);
+      const sofaRug = { x: s1x - 0.4, y: sy - 0.2, w: s2x + 1.4 - s1x, d: s2y + s2len + 0.45 - sy };
+      prop('rug', sofaRug);
+      zone = null;
 
-      // ---- front corner: vending machines, foosball, phone booth
-      const fy = OD + 3.7;
-      if (D - fy >= 3.4) {
-        add(0.5 + fy + 0.4, () => this.vending(0.12, fy, '#c0392b'));
-        prop('vending', { x: 0.12, y: fy, color: '#c0392b' });
-        prop('vending', { x: 0.12, y: fy + 0.8, color: '#2f6fb0' });
-        add(0.5 + fy + 1.2, () => this.vending(0.12, fy + 0.8, '#2f6fb0'));
-        solid(0.1, fy, 0.75, 1.55);
-        poi(1.3, fy + 0.4, 'vending', 'back');
-        poi(1.3, fy + 1.2, 'vending', 'back');
-      }
-      if (D - fy >= 2.2) {
-        const fx = 3.0, fby = fy + 0.4;
-        add(fx + 0.8 + fby + 0.4, () => this.foosball(fx, fby));
-        prop('foosball', { x: fx, y: fby });
-        solid(fx, fby, 1.6, 0.8, 0.05);
-        poi(fx - 0.45, fby + 0.4, 'foosball', 'side', { pair: 'fb' });
-        poi(fx + 2.05, fby + 0.4, 'foosball', 'side', { pair: 'fb' });
-        const bx = OW - 2.0, by = fy;
-        this.booth(add, bx, by);
-        prop('booth', { x: bx, y: by });
-        solid(bx - 0.05, by - 0.05, 1.4, 0.1, 0.03);
-        solid(bx - 0.05, by - 0.05, 0.1, 1.4, 0.03);
-        solid(bx + 1.25, by - 0.05, 0.1, 1.4, 0.03);
-        solid(bx + 0.85, by + 1.25, 0.5, 0.1, 0.03);
-        poi(bx + 0.65, by + 0.6, 'phone', 'front', { sit: 0.45 });
-        add(OW - 0.45 + D - 0.6, () => this.plant(OW - 0.45, D - 0.6));
-        prop('plant', { x: OW - 0.45, y: D - 0.6 });
-      }
+      // ---- phone booth (waiting on you): one inside, the rest queue in front
+      const bx = Math.max(s2x + 2.0, OW - 2.4), by = fy + 0.6;
+      this.booth(add, bx, by);
+      prop('booth', { x: bx, y: by });
+      solid(bx - 0.05, by - 0.05, 1.4, 0.1, 0.03);
+      solid(bx - 0.05, by - 0.05, 0.1, 1.4, 0.03);
+      solid(bx + 1.25, by - 0.05, 0.1, 1.4, 0.03);
+      solid(bx + 0.85, by + 1.25, 0.5, 0.1, 0.03);
+      zones.push({ id: 'booth', x: bx, y: by, z: 0, w: 1.3, d: 1.3, h: 2.0 });
+      const booth = [{ x: bx + 0.6, y: by + 0.85, act: 'phone', face: 'front', yaw: 0 }];
+      for (let qy = by + 1.9; qy < D - 0.45 && booth.length < 7; qy += 0.65) booth.push({ x: bx + 0.42, y: qy, act: 'queue', face: 'back', yaw: Math.PI });
+      add(OW - 0.45 + D - 0.6, () => this.plant(OW - 0.45, D - 0.6));
+      prop('plant', { x: OW - 0.45, y: D - 0.6 });
 
       // ---- meeting room behind glass, door at y 3.6–4.6
       const mx = OW;
@@ -370,6 +452,7 @@
       solid(mx - 0.05, 0, 0.1, 3.6, 0.05);
       solid(mx - 0.05, 4.6, 0.1, MR - 4.6, 0.05);
       solid(mx, MR - 0.05, RW, 0.1, 0.05);
+      zones.push({ id: 'meeting', x: mx + 2.4, y: 0, z: 0.8, w: 2.6, d: 0.1, h: 1.15 });
       const mtx = mx + 1.6, mty = 1.7;
       add(mtx + 1.5 + mty + 0.7, () => this.meetingTable(mtx, mty));
       prop('meetingTable', { x: mtx, y: mty, w: 3.0, d: 1.4 });
@@ -378,17 +461,23 @@
         const cx = mtx + 0.5 + k * 1.0;
         add(cx + mty - 0.45, () => this.stool(cx, mty - 0.4, 0.4, '#555c66'));
         add(cx + mty + 1.78, () => this.stool(cx, mty + 1.8, 0.4, '#555c66'));
-        poi(cx, mty - 0.4, 'meeting', 'front', { sit: 0.42 });
         prop('chair', { x: cx, y: mty - 0.4, face: 'front' });
         prop('chair', { x: cx, y: mty + 1.8, face: 'back' });
-        poi(cx, mty + 1.8, 'meeting', 'back', { sit: 0.42 });
       }
-      poi(mx + 3.6, 0.65, 'whiteboard', 'back');
+      // Warned agents (near compact, long turn): one alone sits at the table;
+      // two or more stand between the chairs and argue across it.
+      const meetSeat = [{ x: mtx + 1.5, y: mty - 0.4, act: 'meeting', face: 'front', yaw: 0, sit: 0.42 }];
+      const argue = [
+        [mtx + 1.0, mty - 0.45, 'front', 0], [mtx + 2.0, mty + 1.85, 'back', Math.PI],
+        [mtx - 0.45, mty + 0.7, 'front', Math.PI / 2], [mtx + 3.45, mty + 0.7, 'back', -Math.PI / 2],
+        [mtx + 2.0, mty - 0.45, 'front', 0], [mtx + 1.0, mty + 1.85, 'back', Math.PI],
+      ].map(([x, y, face, yaw]) => ({ x, y, act: 'argue', face, yaw }));
       add(W - 0.45 + 0.45, () => this.plant(W - 0.45, 0.45));
       prop('plant', { x: W - 0.45, y: 0.45 });
       solid(W - 0.65, 0.25, 0.4, 0.4);
 
       // ---- pantry
+      zone = 'pantry';
       const cy = MR + 0.3;
       longBox(mx + 1.0, cy, 0, RW - 2.3, 0.7, 0.9, pal.counter, pal.counterL, pal.counterR, { bias: -0.5 });
       solid(mx + 1.0, cy, RW - 2.3, 0.7);
@@ -401,6 +490,7 @@
       add(mx + 4.15 + cy + 0.35, () => this.sink(mx + 3.9, cy + 0.12));
       add(W - 0.75 + cy + 0.4, () => this.fridge(W - 1.15, cy));
       solid(W - 1.15, cy, 0.85, 0.75);
+      zones.push({ id: 'fridge', x: W - 1.15, y: cy, z: 0, w: 0.85, d: 0.75, h: 1.95 });
       add(mx + 0.55 + cy + 0.25, () => this.waterCooler(mx + 0.35, cy + 0.05));
       solid(mx + 0.3, cy, 0.5, 0.5);
       poi(mx + 2.65, cy + 1.2, 'coffee', 'back');
@@ -418,6 +508,7 @@
       }
 
       // ---- lounge
+      zone = 'lounge';
       const lx = mx + 0.6, ly = PY + 0.4;
       const shelfX = mx + 3.4, shelfW = RW - 3.6;
       longBox(shelfX, PY - 0.25, 0, shelfW, 0.45, 1.45, this.shade(pal.deskTop, -5), pal.deskL, pal.deskR, {
@@ -451,11 +542,7 @@
       add(W - 0.5 + D - 0.5, () => this.plant(W - 0.5, D - 0.5));
       add(lx - 0.2 + D - 0.6, () => this.floorLamp(lx - 0.2, D - 0.6));
 
-      const posters = [
-        { y: 2.2, color: '#c96442', text: 'SHIP IT' },
-        { y: 4.6, color: '#10a37f', text: 'TESTS ✓' },
-      ];
-      return { W, D, OW, OD, MR, PY, RW, grid, items, props, pois, desks, windows, posters, pp, door: { x: 0.4, y: D - 1.2 } };
+      return { W, D, OW, OD, MR, PY, RW, grid, items, props, pois, desks, windows, board, tv, sofaRug, booth, meetSeat, argue, zones, door: { x: 0.4, y: D - 1.2 } };
     }
 
     glassX(add, x, y, d) {
@@ -484,47 +571,76 @@
       const wanderers = off.slice(0, MAX_WANDERERS);
       this.offDuty = off.length - wanderers.length;
 
+      // Waiting on you: in line for the phone booth, first come first served.
+      // Busy with a warning (near compact, long turn): to the meeting room.
+      // Both keep their order across updates; whoever doesn't fit stays at a desk.
+      const keep = (list, ss) => {
+        const want = new Set(ss.map((s) => s.key));
+        const out = list.filter((k) => want.has(k));
+        for (const s of ss) if (!out.includes(s.key)) out.push(s.key);
+        return out;
+      };
+      const byTime = (f) => (a, b) => (a[f] || 0) - (b[f] || 0);
+      this.queue = keep(this.queue, working.filter((s) => s.status === 'waiting').sort(byTime('lastEventAt')));
+      this.meeting = keep(this.meeting, working.filter((s) => s.status !== 'waiting' && s.alerts && s.alerts.length).sort(byTime('startedAt')));
+      const away = () => {
+        const m = new Map();
+        const { booth, meetSeat, argue } = this.plan;
+        this.queue.slice(0, booth.length).forEach((k, i) => m.set(k, booth[i]));
+        const room = this.meeting.length > 1 ? argue : meetSeat;
+        this.meeting.slice(0, room.length).forEach((k, i) => m.set(k, room[i]));
+        return m;
+      };
+      let spots = away();
+
       const cap = this.plan.desks.length;
-      // Scene packs have a fixed floor plan; the built-in office grows with the team.
-      if (!this.plan.fixed && (working.length > cap - 1 || (cap > 8 && working.length < cap * 0.35))) {
-        this.plan = this.buildPlan(working.length);
+      const atDesk = working.length - spots.size;
+      // The office grows with the team.
+      if (atDesk > cap - 1 || (cap > 8 && atDesk < cap * 0.35)) {
+        this.plan = this.buildPlan(atDesk);
         this.deskOf.clear();
-        for (const p of this.people.values()) { p.poi = null; p.napDesk = null; p.desk = null; p.until = 0; }
+        for (const p of this.people.values()) { p.poi = null; p.desk = null; p.spot = null; p.until = 0; }
+        spots = away();
       }
 
-      const workKeys = new Set(working.map((s) => s.key));
+      const workKeys = new Set(working.filter((s) => !spots.has(s.key)).map((s) => s.key));
       for (const k of [...this.deskOf.keys()]) if (!workKeys.has(k)) this.deskOf.delete(k);
       const used = new Set(this.deskOf.values());
       // Fill the desks that face us first so more faces and screens show.
       const desks = this.plan.desks;
       const order = desks.map((d, i) => i).sort((a, b) => (desks[a].side === 's') - (desks[b].side === 's') || a - b);
-      for (const s of [...working].sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0))) {
+      for (const s of working.filter((s) => workKeys.has(s.key)).sort(byTime('startedAt'))) {
         if (this.deskOf.has(s.key)) continue;
         const i = order.find((n) => !used.has(n));
         if (i == null) continue;
         this.deskOf.set(s.key, i);
         used.add(i);
       }
-      const takenDesks = new Set([...this.deskOf.values()].map((i) => desks[i]));
 
       const shown = new Set();
       for (const s of [...working, ...wanderers]) {
+        const spot = spots.get(s.key);
         const isWorker = this.deskOf.has(s.key);
-        if (!isWorker && WORKING.has(s.status)) continue; // no desk left
+        if (!spot && !isWorker && WORKING.has(s.status)) continue; // no desk left
         shown.add(s.key);
         let p = this.people.get(s.key);
         if (!p) { p = this.newPerson(s); this.people.set(s.key, p); }
         p.s = s;
         p.leaving = false;
-        if (isWorker) {
+        if (spot) {
           this.release(p);
+          p.desk = null;
+          const mode = s.status === 'waiting' ? 'booth' : 'meet';
+          if (p.spot !== spot || p.mode !== mode) { p.spot = spot; this.goTo(p, spot); }
+          p.mode = mode;
+        } else if (isWorker) {
+          this.release(p);
+          p.spot = null;
           const desk = desks[this.deskOf.get(s.key)];
           if (p.desk !== desk || p.mode !== 'work') { p.desk = desk; this.goTo(p, desk.seat); }
           p.mode = 'work';
-        } else {
-          if (p.mode !== 'wander') { p.mode = 'wander'; p.desk = null; p.poi = null; p.until = 0; }
-          // Someone started working at the desk this one was napping on.
-          if (p.napDesk && takenDesks.has(p.napDesk)) { this.release(p); p.path = []; }
+        } else if (p.mode !== 'wander') {
+          p.mode = 'wander'; p.desk = null; p.spot = null; p.poi = null; p.until = 0;
         }
       }
       for (const [k, p] of this.people) {
@@ -533,6 +649,7 @@
           p.mode = 'leave';
           this.release(p);
           p.desk = null;
+          p.spot = null;
           this.goTo(p, this.plan.door);
         }
       }
@@ -541,7 +658,6 @@
 
     release(p) {
       if (p.poi) { p.poi.taken = null; p.poi = null; }
-      if (p.napDesk) { p.napDesk.napper = null; p.napDesk = null; }
     }
 
     newPerson(s) {
@@ -572,30 +688,28 @@
       if (p.path.length) return;
       if (p.poi && now < p.until) return;
       this.release(p);
-      const plan = this.plan;
-      const workingDesks = new Set([...this.deskOf.values()].map((i) => plan.desks[i]));
-      const sleepy = p.s.status === 'idle';
-      const weighted = [];
-      for (const q of plan.pois) {
-        if (q.taken) continue;
-        let w = 1;
-        if (q.pair) w = plan.pois.some((o) => o.pair === q.pair && o !== q && o.taken) ? 7 : 1.2;
-        if (q.act === 'couch' || q.act === 'beanbag' || q.sleepy) w = sleepy ? 3 : 1.4;
-        weighted.push([q, w]);
-      }
-      for (const d of plan.noNap ? [] : plan.desks) {
-        if (workingDesks.has(d) || d.napper) continue;
-        weighted.push([{ x: d.seat.x, y: d.seat.y, act: 'nap', face: d.side === 'n' ? 'front' : 'back', sit: 0.34, desk: d }, sleepy ? 3 : 0.25]);
-      }
+      const s = p.s;
+      // Finished: the sofas, scrolling a phone at first and watching TV
+      // after a while. Idle (or no sofa free): the pantry, sometimes the lounge.
+      const free = this.plan.pois.filter((q) => !q.taken);
+      const done = s.status === 'done';
+      const dozy = Date.now() - (s.lastEventAt || 0) > DOZE_AFTER;
+      let pool = done ? free.filter((q) => q.zone === 'sofa') : [];
+      if (!pool.length) pool = free.filter((q) => q.zone === 'pantry' || q.zone === 'lounge');
+      const sleepy = s.status === 'idle';
+      const weighted = pool.map((q) => {
+        if (q.zone === 'sofa') return [q, (q.act === 'tv') === dozy ? 6 : 0.3];
+        if (q.act === 'couch' || q.act === 'beanbag') return [q, sleepy ? 2 : 0.7];
+        return [q, q.zone === 'pantry' ? 2 : 0.7];
+      });
       if (!weighted.length) return;
       let r = Math.random() * weighted.reduce((a, [, w]) => a + w, 0);
       let choice = weighted[0][0];
       for (const [q, w] of weighted) { r -= w; if (r <= 0) { choice = q; break; } }
-      if (choice.desk) { choice.desk.napper = p.key; p.napDesk = choice.desk; }
       choice.taken = p.key;
       p.poi = choice;
       p.until = Infinity; // set on arrival
-      p.stay = (choice.act === 'nap' ? rand(25, 60) : choice.act === 'pingpong' ? rand(15, 30) : rand(8, 20)) * 1000;
+      p.stay = (choice.zone === 'sofa' ? rand(120, 300) : rand(8, 20)) * 1000;
       this.goTo(p, choice);
     }
 
@@ -637,8 +751,28 @@
       this.canvas.style.cursor = key ? 'pointer' : 'default';
       if (key !== this.hoverKey || click) {
         this.hoverKey = key;
+        const at = { x: e.clientX, y: e.clientY };
+        if (key && key.startsWith('zone:')) {
+          if (click) this.onZone(key.slice(5), at);
+          else this.onHover(null, at, false);
+          return;
+        }
         const p = key && this.people.get(key);
-        this.onHover(p ? p.s : null, { x: e.clientX, y: e.clientY }, !!click);
+        this.onHover(p ? p.s : null, at, !!click);
+      }
+    }
+
+    // Hit boxes for the clickable areas, pushed before the people so a
+    // person standing in front still wins. `proj` maps a floor-plan point
+    // (x, y, height) to the coordinates the hit list uses.
+    zoneHits(proj) {
+      for (const z of this.plan.zones) {
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        for (const dx of [0, z.w]) for (const dy of [0, z.d]) for (const dz of [0, z.h]) {
+          const q = proj(z.x + dx, z.y + dy, z.z + dz);
+          x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x); y0 = Math.min(y0, q.y); y1 = Math.max(y1, q.y);
+        }
+        this.hit.push({ key: 'zone:' + z.id, x0, x1, y0, y1 });
       }
     }
 
@@ -671,7 +805,7 @@
       return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
     }
 
-    roundRect(x, y, w, h, r, fill, stroke) {
+    roundRect(x, y, w, h, r, fill, stroke, lw = 1.5) {
       const c = this.ctx;
       c.beginPath();
       c.moveTo(x + r, y);
@@ -681,7 +815,24 @@
       c.arcTo(x, y, x + w, y, r);
       c.closePath();
       if (fill) { c.fillStyle = fill; c.fill(); }
-      if (stroke) { c.strokeStyle = stroke; c.lineWidth = 1.5; c.stroke(); }
+      if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw; c.stroke(); }
+    }
+
+    // A monospace label on a dark chip with a coloured ring (the warnings),
+    // so it reads as UI and not as part of the office.
+    chip(text, x, y, ring, align = 'center') {
+      const c = this.ctx;
+      c.save();
+      c.font = '700 10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+      const w = Math.max(16, c.measureText(text).width + 9);
+      const x0 = align === 'right' ? x - w : align === 'left' ? x : x - w / 2;
+      this.roundRect(x0, y - 8, w, 16, 4, 'rgba(22,24,30,.92)', ring, 1.6);
+      c.fillStyle = '#f4f4f0';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText(text, x0 + w / 2, y + 0.5);
+      c.restore();
+      return w;
     }
 
     // Draw flat things on a wall: 'y0' = back wall (runs along x),
@@ -699,7 +850,7 @@
     // ------------------------------------------------------------ room shell
 
     drawRoom() {
-      const { W, D, OW, MR, PY, pp } = this.plan;
+      const { W, D, OW, MR, PY, board, tv, sofaRug: rg } = this.plan;
       const pal = this.pal;
       const P = (x, y, z) => this.iso(x, y, z);
       const t = this.t / 1000;
@@ -729,7 +880,8 @@
       }
       this.poly([P(OW + 0.3, PY + 0.6), P(OW + 4.3, PY + 0.6), P(OW + 4.3, D - 0.4), P(OW + 0.3, D - 0.4)], pal.rug);
       this.poly([P(OW + 0.5, PY + 0.8), P(OW + 4.1, PY + 0.8), P(OW + 4.1, D - 0.6), P(OW + 0.5, D - 0.6)], null, pal.rugEdge);
-      this.poly([P(pp.x0 - 0.6, pp.y - 1.4), P(pp.x1 + 0.6, pp.y - 1.4), P(pp.x1 + 0.6, pp.y + 1.3), P(pp.x0 - 0.6, pp.y + 1.3)], pal.mat);
+      this.poly([P(rg.x, rg.y), P(rg.x + rg.w, rg.y), P(rg.x + rg.w, rg.y + rg.d), P(rg.x, rg.y + rg.d)], pal.rug);
+      this.poly([P(rg.x + 0.2, rg.y + 0.2), P(rg.x + rg.w - 0.2, rg.y + 0.2), P(rg.x + rg.w - 0.2, rg.y + rg.d - 0.2), P(rg.x + 0.2, rg.y + rg.d - 0.2)], null, pal.rugEdge);
 
       // walls
       this.poly([P(0, 0, 0), P(W, 0, 0), P(W, 0, WALL_H), P(0, 0, WALL_H)], pal.wallL);
@@ -772,13 +924,16 @@
       this.onWall('y0', OW + 0.5, 2.2, (c) => {
         c.font = '700 9px ui-sans-serif, system-ui, sans-serif'; c.fillStyle = this.shade(pal.trim, -60); c.fillText('MEETING', 0, 0);
       });
-      // left wall: posters, clock, door
-      for (const ps of this.plan.posters) {
-        this.poly([P(0, ps.y, 0.95), P(0, ps.y + 0.9, 0.95), P(0, ps.y + 0.9, 1.95), P(0, ps.y, 1.95)], ps.color);
-        this.onWall('x0', ps.y + 0.45, 1.4, (c) => {
-          c.font = '800 8px ui-sans-serif, system-ui, sans-serif'; c.fillStyle = '#fff'; c.textAlign = 'center'; c.fillText(ps.text, 0, 0);
-        });
-      }
+      // left wall: sales board, TV, clock, door
+      this.poly([P(0, board.y - 0.06, board.z - 0.06), P(0, board.y + board.w + 0.06, board.z - 0.06), P(0, board.y + board.w + 0.06, board.z + board.h + 0.06), P(0, board.y - 0.06, board.z + board.h + 0.06)], '#b9bec5');
+      // onWall's x runs toward the window wall, one tile = TW / 2 px.
+      this.onWall('x0', board.y + board.w, board.z + board.h, (c) => {
+        const k = (board.w * TW / 2) / 1024;
+        c.scale(k, (board.h * TH) / 384);
+        drawBoard(c);
+      });
+      this.poly([P(0, tv.y, 0.95), P(0, tv.y + tv.w, 0.95), P(0, tv.y + tv.w, 1.85), P(0, tv.y, 1.85)], '#111214');
+      this.poly([P(0, tv.y + 0.06, 1.0), P(0, tv.y + tv.w - 0.06, 1.0), P(0, tv.y + tv.w - 0.06, 1.8), P(0, tv.y + 0.06, 1.8)], `hsl(${(t * 12) % 360},55%,${pal.dark ? 26 : 34}%)`);
       this.onWall('x0', 1.0, 1.85, (c) => {
         c.beginPath(); c.arc(0, 0, 11, 0, Math.PI * 2); c.fillStyle = pal.bubble; c.fill();
         c.lineWidth = 2; c.strokeStyle = pal.trim; c.stroke();
@@ -832,14 +987,6 @@
       this.box(x, y, 0, 0.75, 0.55, 0.55, pal.deskTop, pal.deskL, pal.deskR);
       this.box(x + 0.05, y + 0.05, 0.55, 0.65, 0.45, 0.28, '#e8e8e8', '#c8c8c8', '#b3b3b3');
       this.box(x + 0.15, y + 0.35, 0.83, 0.45, 0.15, 0.02, '#ffffff', '#eee', '#ddd');
-    }
-
-    pingpong(x, y) {
-      for (const [lx, ly] of [[0.1, 0.1], [2.4, 0.1], [0.1, 1.2], [2.4, 1.2]]) this.box(x + lx, y + ly, 0, 0.08, 0.08, 0.7, '#333', '#333', '#222');
-      this.box(x, y, 0.7, 2.6, 1.4, 0.06, '#2f7a52', '#245f40', '#1d4f35');
-      const P = (a, b, c) => this.iso(a, b, c);
-      this.poly([P(x + 0.04, y + 0.69, 0.765), P(x + 2.56, y + 0.69, 0.765), P(x + 2.56, y + 0.71, 0.765), P(x + 0.04, y + 0.71, 0.765)], '#ffffff');
-      this.poly([P(x + 1.3, y - 0.05, 0.76), P(x + 1.3, y + 1.45, 0.76), P(x + 1.3, y + 1.45, 0.95), P(x + 1.3, y - 0.05, 0.95)], 'rgba(255,255,255,.55)', '#ddd');
     }
 
     meetingTable(x, y) {
@@ -921,6 +1068,20 @@
       this.box(x + 2.15, y + 0.12, 0.32, 0.35, 0.16, 0.28, '#e9c46a', '#d4ae52', '#c19c43');
     }
 
+    // A sofa along y, back to the right (x high), seat facing -x. The back
+    // goes in three pieces, one per seat, so each sitter sorts behind it.
+    couchY(add, x, y, len) {
+      const pal = this.pal;
+      const top = this.shade(pal.couch, 10), side = this.shade(pal.couchD, -12), arm = this.shade(pal.couch, 6);
+      add(x + y + 0.2, () => this.box(x, y, 0, 0.8, len, 0.32, pal.couch, pal.couchD, side));
+      add(x + 0.4 + y - 0.06, () => this.box(x - 0.05, y - 0.15, 0, 0.85, 0.18, 0.52, arm, pal.couchD, side));
+      for (let k = 0; k < 3; k++) {
+        const py = y + (k * len) / 3;
+        add(x + 0.675 + py + len / 6, () => this.box(x + 0.55, py, 0.32, 0.25, len / 3, 0.42, top, pal.couchD, side));
+      }
+      add(x + 0.4 + y + len + 0.09, () => this.box(x - 0.05, y + len, 0, 0.85, 0.18, 0.52, arm, pal.couchD, side));
+    }
+
     coffeeTable(x, y) {
       const pal = this.pal;
       this.box(x, y, 0, 1.6, 0.7, 0.3, this.shade(pal.deskTop, -10), pal.deskL, pal.deskR);
@@ -982,44 +1143,6 @@
       c.fillStyle = '#333'; c.beginPath(); c.ellipse(b.x, b.y, 7, 3.5, 0, 0, Math.PI * 2); c.fill();
       c.fillStyle = '#f3e3b5';
       c.beginPath(); c.moveTo(t.x - 9, t.y + 4); c.lineTo(t.x + 9, t.y + 4); c.lineTo(t.x + 5, t.y - 8); c.lineTo(t.x - 5, t.y - 8); c.closePath(); c.fill();
-    }
-
-    vending(x, y, color) {
-      this.box(x, y, 0, 0.7, 0.75, 1.85, this.shade(color, 15), this.shade(color, -10), color);
-      const P = (a, b, c) => this.iso(a, b, c);
-      const fx = x + 0.7;
-      this.poly([P(fx, y + 0.08, 0.7), P(fx, y + 0.55, 0.7), P(fx, y + 0.55, 1.7), P(fx, y + 0.08, 1.7)], 'rgba(20,30,40,.75)');
-      const cols = ['#f2d16b', '#5cf08a', '#ff8a65', '#81d4fa', '#ce93d8'];
-      for (let r = 0; r < 4; r++) {
-        for (let k = 0; k < 3; k++) {
-          const q = P(fx, y + 0.15 + k * 0.14, 1.55 - r * 0.23);
-          this.ctx.fillStyle = cols[(r * 3 + k + Math.round(y)) % cols.length];
-          this.ctx.fillRect(q.x - 1.5, q.y - 4, 3, 5);
-        }
-      }
-      this.poly([P(fx, y + 0.1, 0.25), P(fx, y + 0.5, 0.25), P(fx, y + 0.5, 0.45), P(fx, y + 0.1, 0.45)], '#222');
-      const glow = P(fx, y + 0.65, 1.2);
-      this.ctx.fillStyle = Math.sin(this.t / 700 + y) > 0 ? '#9ef' : '#4ad';
-      this.ctx.fillRect(glow.x - 1, glow.y - 3, 2, 6);
-    }
-
-    foosball(x, y) {
-      for (const [lx, ly] of [[0.1, 0.1], [1.42, 0.1], [0.1, 0.62], [1.42, 0.62]]) this.box(x + lx, y + ly, 0, 0.08, 0.08, 0.6, '#5a4030', '#5a4030', '#4a3428');
-      this.box(x, y, 0.6, 1.6, 0.8, 0.25, '#2f8a4a', '#6e533b', '#5c4431');
-      const P = (a, b, c) => this.iso(a, b, c);
-      const players = this.plan && this.plan.pois.filter((q) => q.pair === 'fb' && q.taken).length === 2;
-      for (let k = 0; k < 6; k++) {
-        const rx = x + 0.2 + k * 0.24;
-        const shift = players ? Math.sin(this.t / 120 + k) * 0.06 : 0;
-        const a = P(rx, y - 0.15, 0.82), b = P(rx, y + 0.95, 0.82);
-        this.ctx.strokeStyle = '#c8ccd0'; this.ctx.lineWidth = 1.2;
-        this.ctx.beginPath(); this.ctx.moveTo(a.x, a.y); this.ctx.lineTo(b.x, b.y); this.ctx.stroke();
-        for (let m = 0; m < 2; m++) {
-          const q = P(rx, y + 0.25 + m * 0.3 + shift, 0.82);
-          this.ctx.fillStyle = k % 2 ? '#c0392b' : '#2f6fb0';
-          this.ctx.fillRect(q.x - 1.5, q.y - 3, 3, 6);
-        }
-      }
     }
 
     booth(add, x, y) {
@@ -1146,13 +1269,10 @@
       if (p.mode === 'work' && p.desk) {
         const face = p.desk.side === 'n' ? 'front' : 'back';
         if (s.status === 'waiting' || s.status === 'error') return { pose: 'stand', face, act: 'wave', sitZ: 0 };
-        if (p.desk.pose === 'stand') return { pose: 'stand', face, act: 'station', sitZ: 0 };
         return { pose: 'sit', face, act: s.status === 'tool' || s.status === 'typing' ? 'type' : 'think', sitZ: 0.34 };
       }
-      if (p.mode === 'wander' && p.poi) {
-        const q = p.poi;
-        return { pose: q.sit ? 'sit' : 'stand', face: q.face === 'side' ? 'front' : q.face, act: q.act, sitZ: q.sit || 0 };
-      }
+      const q = (p.mode === 'booth' || p.mode === 'meet') ? p.spot : p.mode === 'wander' ? p.poi : null;
+      if (q) return { pose: q.sit ? 'sit' : 'stand', face: q.face, act: q.act, sitZ: q.sit || 0 };
       return { pose: 'stand', face: 'front', act: null, sitZ: 0 };
     }
 
@@ -1180,8 +1300,7 @@
 
       let x = b.x;
       const y = b.y - bob;
-      if (st.act === 'pingpong') x += Math.sin(t * 7 + p.phase) * 4;
-      if (st.act === 'foosball') x += Math.sin(t * 5 + p.phase) * 1.5;
+      if (st.act === 'argue') x += Math.sin(t * 14 + p.phase) * 1.2;
       const sc = s.subagent ? 0.8 : 1;
       c.save();
       c.translate(x, y);
@@ -1234,25 +1353,11 @@
           if (front) { c.fillStyle = pick(this.pal.book, p.h, 5); c.fillRect(-7, hip - 12, 14, 9); c.fillStyle = '#fff'; c.fillRect(-0.5, hip - 12, 1, 9); }
           break;
         }
-        case 'whiteboard':
         case 'arcade': {
-          const k = Math.sin(t * (st.act === 'arcade' ? 14 : 3) + p.phase);
+          const k = Math.sin(t * 14 + p.phase);
           c.fillRect(-9, hip - 11, 3, 10);
           c.fillRect(6, hip - 20 + k * 2, 3, 12);
           hand(7.5, hip - 21 + k * 2);
-          break;
-        }
-        case 'pingpong': {
-          c.fillRect(-9, hip - 11, 3, 10);
-          c.fillRect(6, hip - 14, 3, 9);
-          c.fillStyle = '#c0392b';
-          c.beginPath(); c.arc(10, hip - 16, 4, 0, Math.PI * 2); c.fill();
-          break;
-        }
-        case 'foosball': {
-          const k1 = Math.sin(t * 16 + p.phase) * 1.5;
-          c.fillRect(-9, hip - 12 + k1, 3, 7);
-          c.fillRect(6, hip - 12 - k1, 3, 7);
           break;
         }
         case 'phone': {
@@ -1261,9 +1366,21 @@
           c.fillStyle = '#222'; c.fillRect(5, hip - 25, 3, 6);
           break;
         }
-        case 'nap': {
-          c.fillRect(-9, hip - 13, 3, 6);
-          c.fillRect(6, hip - 13, 3, 6);
+        case 'scroll': {
+          c.fillRect(-6, hip - 11, 3, 7);
+          c.fillRect(3, hip - 11, 3, 7);
+          if (front) {
+            c.fillStyle = '#222'; c.fillRect(-3, hip - 15, 6, 8);
+            c.fillStyle = '#8fd3ff'; c.fillRect(-2, hip - 14, 4, 5.5);
+          }
+          break;
+        }
+        case 'argue': {
+          const k = Math.sin(t * 9 + p.phase) * 3;
+          c.fillRect(-9, hip - 23 + k, 3, 13);
+          c.fillRect(6, hip - 23 - k, 3, 13);
+          hand(-7.5, hip - 24 + k);
+          hand(7.5, hip - 24 - k);
           break;
         }
         default: {
@@ -1273,12 +1390,11 @@
         }
       }
 
-      const napping = st.act === 'nap';
-      const hy = hip - 20 + (napping ? 7 : 0) + (st.act === 'think' ? Math.sin(t * 1.5 + p.phase) * 0.6 : 0);
+      const hy = hip - 20 + (st.act === 'scroll' ? 1.5 : 0) + (st.act === 'think' ? Math.sin(t * 1.5 + p.phase) * 0.6 : 0);
       c.fillStyle = p.skin;
       c.beginPath(); c.arc(0, hy, 7, 0, Math.PI * 2); c.fill();
       c.fillStyle = p.hair;
-      if (front && !napping) {
+      if (front) {
         c.beginPath(); c.arc(0, hy - 1.5, 7.3, Math.PI * 1.05, Math.PI * 1.95); c.fill();
         if (p.hairStyle === 1) { c.fillRect(-7.3, hy - 2, 2.5, 8); c.fillRect(4.8, hy - 2, 2.5, 8); }
         if (p.hairStyle === 2) { c.beginPath(); c.arc(0, hy - 8, 3.2, 0, Math.PI * 2); c.fill(); }
@@ -1290,7 +1406,7 @@
         c.strokeStyle = '#2a2018'; c.lineWidth = 1;
         if (p.mode === 'wander' && !sleepy) {
           c.beginPath(); c.arc(0, hy + 2.2, 2, 0.15 * Math.PI, 0.85 * Math.PI); c.stroke();
-        } else if (s.status === 'error' && p.mode === 'work') {
+        } else if ((s.status === 'error' && p.mode === 'work') || st.act === 'argue') {
           c.beginPath(); c.arc(0, hy + 4.5, 2, 1.15 * Math.PI, 1.85 * Math.PI); c.stroke();
         }
       } else {
@@ -1366,7 +1482,17 @@
       };
 
       let top = y;
-      if (p.mode === 'work' && !p.path.length) {
+      const busy = p.mode === 'work' || p.mode === 'booth' || p.mode === 'meet';
+      if (at.act === 'argue' && !p.path.length) {
+        // Arguing across the table: an anger mark flickers over each head.
+        const on = (t * 1.6 + p.phase) % 2 < 1.3;
+        c.globalAlpha = on ? 1 : 0.25;
+        c.font = font(400, 14);
+        c.fillText(Math.sin(t * 0.8 + p.phase) > 0 ? '💢' : '🗯️', x + Math.sin(t * 20) * 1.5, y - 11);
+        c.font = font(600, 10);
+        c.globalAlpha = 1;
+        top = y - 20;
+      } else if (busy && !p.path.length) {
         const col = STATUS_COLOR[st] || '#888';
         if (st === 'thinking') {
           c.fillStyle = pal.bubble;
@@ -1402,7 +1528,7 @@
         }
       } else if (p.mode === 'wander') {
         const justDone = st === 'done' && Date.now() - (s.lastEventAt || 0) < 3 * 60_000;
-        const dozing = at.act === 'nap' || (st === 'idle' && (at.act === 'couch' || at.act === 'beanbag' || (p.poi && p.poi.sleepy)));
+        const dozing = (st === 'idle' && (at.act === 'couch' || at.act === 'beanbag' || (p.poi && p.poi.sleepy)));
         if (justDone) {
           c.fillStyle = STATUS_COLOR.done;
           c.beginPath(); c.arc(x, y - 10, 7, 0, Math.PI * 2); c.fill();
@@ -1434,9 +1560,17 @@
 
       const hover = this.hoverKey === p.key;
       if (!s.subagent || hover) {
-        tag(this.label(s), this.sublabel(s), top - 11, p.mode === 'work' || hover ? 1 : 0.7);
+        tag(this.label(s), this.sublabel(s), top - 11, busy || hover ? 1 : 0.7);
       } else if (badge) {
         this.agentBadge(badge, x, top - 11);
+      }
+      // Warning chips sit left of the head and never move, apart from the
+      // status bubble (above, right of the head).
+      let right = x - 12;
+      for (const a of s.alerts || []) {
+        const text = alertText(a, s);
+        if (!text) continue;
+        right -= this.chip(text, right, at.y + 2, ALERT_RING, 'right') + 3;
       }
       c.restore();
     }
@@ -1505,26 +1639,6 @@
       c.restore();
     }
 
-    pingPongBall() {
-      const players = this.plan.pois
-        .filter((q) => q.pair === 'pp' && q.taken)
-        .map((q) => this.people.get(q.taken))
-        .filter((p) => p && p.poi && p.poi.pair === 'pp' && !p.path.length);
-      if (players.length < 2) return;
-      const pp = this.plan.pp;
-      const k = (this.t / 900) % 2;
-      const f = k < 1 ? k : 2 - k;
-      const x = pp.x0 + 0.3 + f * (pp.x1 - pp.x0 - 0.6);
-      const z = 0.8 + Math.abs(Math.sin(f * Math.PI * 2)) * 0.45;
-      const c = this.ctx;
-      const sh = this.iso(x, pp.y, 0.77);
-      c.fillStyle = 'rgba(0,0,0,.25)';
-      c.beginPath(); c.ellipse(sh.x, sh.y, 2.5, 1.2, 0, 0, Math.PI * 2); c.fill();
-      const p = this.iso(x, pp.y, z);
-      c.fillStyle = '#fff';
-      c.beginPath(); c.arc(p.x, p.y, 2.2, 0, Math.PI * 2); c.fill();
-    }
-
     // ------------------------------------------------------------ frame
 
     frame(now) {
@@ -1572,10 +1686,7 @@
 
       this.drawRoom();
       const occupant = new Map();
-      for (const p of this.people.values()) {
-        if (p.mode === 'work' && p.desk) occupant.set(p.desk, p);
-        else if (p.napDesk) occupant.set(p.napDesk, p);
-      }
+      for (const p of this.people.values()) if (p.mode === 'work' && p.desk) occupant.set(p.desk, p);
       const items = [...this.plan.items];
       for (const dk of this.plan.desks) {
         const p = occupant.get(dk);
@@ -1587,12 +1698,12 @@
       items.sort((a, b) => a.depth - b.depth);
 
       this.hit = [];
+      this.zoneHits((x, y, z) => this.iso(x, y, z));
       const heads = [];
       for (const it of items) {
         if (it.person) heads.push([it.person, this.person(it.person)]);
         else it.draw();
       }
-      this.pingPongBall();
       if (this.compact) {
         // Keep labels readable when the room is scaled down for PiP.
         c.save();
@@ -1627,5 +1738,7 @@
   window.Office = Office;
   window.OFFICE_AGENT_BADGES = AGENT_BADGES;
   window.OFFICE_PLATFORM_HAIR = PLATFORM_HAIR;
+  window.OFFICE_ALERT_TEXT = alertText;
+  window.OFFICE_DRAW_BOARD = drawBoard;
   window.OfficeGrid = Grid;
 })();

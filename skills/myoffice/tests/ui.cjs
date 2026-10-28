@@ -82,6 +82,49 @@ async function drawnLogos(target) {
   check('2D/3D lives in the settings panel and defaults to 3D');
   // The 2D checks below run first; the 3D ones switch over later.
   await page.goto(base+'/?quality=mid');await stable(page);
+  check('a busy agent with a warning walks to the meeting room and keeps its chips');
+  // Where people go: waiting → phone booth queue, warned → meeting room
+  // (alone: seated; two or more: arguing), finished → sofas, interrupted (like idle) → pantry.
+  const crowd=[
+   {key:'q:1',id:'q1',agent:'claude',status:'waiting',lastEventAt:Date.now()-3000},
+   {key:'q:2',id:'q2',agent:'codex',status:'waiting',lastEventAt:Date.now()-2000},
+   {key:'q:3',id:'q3',agent:'gemini',status:'waiting',lastEventAt:Date.now()-1000},
+   {key:'m:1',id:'m1',agent:'claude',status:'tool',alerts:['longTurn'],startedAt:1},
+   {key:'f:1',id:'f1',agent:'claude',status:'done',lastEventAt:Date.now()},
+   {key:'f:2',id:'f2',agent:'codex',status:'done',lastEventAt:Date.now()-3600000},
+   {key:'i:1',id:'i1',agent:'gemini',status:'interrupted',lastEventAt:Date.now()-7200000},
+  ].map(s=>({platform:'cli',project:s.id,...s}));
+  await page.evaluate(s=>onData({now:Date.now(),sessions:s}),crowd);
+  const where=()=>page.evaluate(()=>Object.fromEntries([...office.people.values()].map(p=>[p.key,{mode:p.mode,act:office.stateOf(p).act,pose:office.stateOf(p).pose,zone:p.poi&&p.poi.zone,i:p.spot?office.plan.booth.indexOf(p.spot):-1,desk:!!p.desk}])));
+  await page.waitForFunction(()=>[...office.people.values()].every(p=>!p.path.length&&(p.mode!=='wander'||p.poi)),{},{timeout:20000});
+  let w=await where();
+  assert.deepEqual([w['q:1'].i,w['q:2'].i,w['q:3'].i],[0,1,2]);
+  assert.deepEqual([w['q:1'].act,w['q:2'].act],['phone','queue']);
+  assert.equal(w['q:1'].desk,false);
+  assert.deepEqual([w['m:1'].mode,w['m:1'].act,w['m:1'].pose],['meet','meeting','sit']);
+  assert.deepEqual([w['f:1'].zone,w['f:2'].zone],['sofa','sofa']);
+  assert.equal(['pantry','lounge'].includes(w['i:1'].zone),true);
+  await page.evaluate(s=>onData({now:Date.now(),sessions:[...s.filter(x=>x.key!=='q:1'),{...s[3],key:'m:2',id:'m2',startedAt:2}]}),crowd);
+  await page.waitForFunction(()=>[...office.people.values()].every(p=>!p.path.length),{},{timeout:20000});
+  w=await where();
+  assert.deepEqual([w['q:2'].i,w['q:3'].i],[0,1]);
+  assert.deepEqual([w['m:1'].act,w['m:2'].act,w['m:1'].pose],['argue','argue','stand']);
+  check('waiting agents queue at the phone booth, warned ones argue in the meeting room, finished ones rest on the sofas');
+  const zoneAt=id=>page.evaluate(id=>{office.frame(performance.now());const h=office.hit.find(h=>h.key==='zone:'+id);const r=office.canvas.getBoundingClientRect();return {x:r.left+(h.x0+h.x1)/2,y:r.top+(h.y0+h.y1)/2}},id);
+  // A real click on the board (nobody sits at the desks now), the rest straight through the callback.
+  const board=await zoneAt('whiteboard');
+  await page.mouse.click(board.x,board.y);
+  assert.equal(await page.locator('#tip .zone .zone-title').innerText(),'Desks & sales board');
+  for(const [id,title] of [['booth','Phone booth'],['tv','Sofa corner'],['fridge','Pantry'],['meeting','Meeting room']]){
+   const at=await zoneAt(id);
+   await page.evaluate(({id,at})=>officeOpts.onZone(id,at),{id,at});
+   assert.equal(await page.locator('#tip .zone .zone-title').innerText(),title);
+  }
+  await page.evaluate(()=>officeOpts.onHover(null,{x:0,y:0},true));
+  assert.equal(await page.locator('#tip').isVisible(),false);
+  check('both boards, the phone booth, TV and fridge explain their area when clicked');
+  await page.evaluate(s=>onData({now:Date.now(),sessions:s}),sessions);await stable(page);
+  await page.waitForFunction(()=>[...office.people.values()].every(p=>!p.leaving),{},{timeout:30000});
   assert.match(await page.title(),/Agents Office$/);
   assert.equal(await page.locator('h1').count(),0);
   assert.equal(await page.evaluate(()=>document.querySelector('#summary').getBoundingClientRect().left>document.querySelector('.controls').getBoundingClientRect().right),true);
@@ -161,18 +204,52 @@ async function drawnLogos(target) {
   assert.equal(await page.locator('.grid .card .meta').count(),0);
   await page.click('#viewSeg [data-v=office]');await stable(page);
   check('the card shows the IDE title, a copy-title button, the workspace row and a VS Code deep link for VS Code Claude sessions');
+  const warned=[{...sessions[0],key:'claude:warn',id:'warn',status:'tool',activity:'Bash: make',alerts:['compact','longTurn'],contextTokens:330000,compactAt:367000,turnStartedAt:Date.now()-75*60000,turnStartApprox:true}];
+  await page.evaluate(s=>onData({now:Date.now(),sessions:s}),warned);
+  await page.waitForFunction(()=>[...office.people.values()].some(p=>p.key==='claude:warn'&&p.mode==='meet'&&!p.path.length),{},{timeout:15000});
+  assert.deepEqual(await page.evaluate(()=>{
+   const found=[];const ctx=office.ctx;const original=ctx.fillText;
+   ctx.fillText=function(text,...args){if(/^(ctx \d+%|\d+m|\d+h\d+m)$/.test(text))found.push(text);return original.call(this,text,...args)};
+   try {office.frame(performance.now());} finally {ctx.fillText=original;}
+   return found.sort();
+  }),['75m','ctx 90%']);
+  assert.deepEqual((await page.locator('#legend .alert-key').allInnerTexts()).map(t=>t.replace(/\s+/g,' ')),['ctx % Near auto-compact','min Long turn']);
+  await page.evaluate(()=>officeOpts.onHover(state.data.sessions[0],{x:40,y:40},true));
+  assert.deepEqual((await page.locator('#tip .alert').allInnerTexts()).map(t=>t.replace(/\s+/g,' ')),['ctx 90% Near auto-compact','75m Long turn']);
+  assert.equal(await page.locator('#tip .meta dd').nth(3).innerText(),'90% (330k / 367k)');
+  await page.keyboard.press('Escape');
+  await page.click('#viewSeg [data-v=list]');
+  assert.deepEqual((await page.locator('.grid .card .alert').allInnerTexts()).map(t=>t.replace(/\s+/g,' ')),['ctx 90% Near auto-compact','75m Long turn']);
+  assert.match(await page.locator('.grid .card .time').innerText(),/^≥ 1h 15m/);
+  await page.click('#viewSeg [data-v=office]');await stable(page);
+  check('warnings draw as numeric chips in the office and show on cards, the hover card and the legend; an approximate turn start reads ≥');
   await openSettings(page);await page.uncheck('#showAgent');assert.equal((await badges(page)).length,0);
   assert.equal(await page.locator('#agentLegend').isVisible(),false);
   await page.reload();await stable(page);assert.equal(await page.locator('#showAgent').isChecked(),false);
   await openSettings(page);await page.check('#showAgent');check('badge toggle hides markers and legend and persists across reload');
   await openSettings(page);await page.click('#qualSeg [data-v=high]');
-  await page.waitForFunction(()=>officeKind==='high:office'&&office?.loaded&&office.framesShown>4,{},{timeout:30000});
+  await page.waitForFunction(()=>officeKind==='high'&&office?.loaded&&office.framesShown>4,{},{timeout:30000});
   assert.deepEqual([...new Set(await badges(page))].sort(),['Cl','Cx','G','Oc']);
   await screenshot(page, 'office-3d');
   assert.deepEqual(await drawnLogos(page),['claude','codex','gemini','opencode']);
   check('3D renders the same official provider logos');
   assert.deepEqual(await page.evaluate(()=>[...office.people.values()].map(p=>[p.s.platform,office.modelName(p).split('-')[0]]).filter(([pf])=>pf==='vscode'||pf==='cli').map(([pf,g])=>`${pf}:${g}`).sort()),['cli:male','cli:male','cli:male','vscode:female','vscode:female']);
   check('3D picks the model group from the platform');
+  // Trackpad: two-finger scrolling pans, a pinch (Chrome: Ctrl+wheel) zooms, arrow keys pan, a resize keeps the pan.
+  await page.keyboard.press('Escape');await page.evaluate(()=>document.activeElement?.blur());
+  const cam=()=>page.evaluate(()=>({zoom:office.camera.zoom,x:office.controls.target.x,y:office.controls.target.y,z:office.controls.target.z}));
+  await page.mouse.move(640,520);
+  let cam0=await cam();await page.mouse.wheel(0,200);await page.waitForTimeout(150);let cam1=await cam();
+  assert.equal(cam1.zoom,cam0.zoom);assert.notDeepEqual([cam1.x,cam1.y,cam1.z],[cam0.x,cam0.y,cam0.z]);
+  await page.keyboard.down('Control');await page.mouse.wheel(0,-200);await page.keyboard.up('Control');await page.waitForTimeout(400);
+  assert.ok((await cam()).zoom>cam1.zoom);
+  assert.equal(await page.evaluate(()=>scrollY),0);
+  cam0=await cam();await page.keyboard.down('ArrowRight');await page.waitForTimeout(400);await page.keyboard.up('ArrowRight');cam1=await cam();
+  assert.notDeepEqual([cam1.x,cam1.y,cam1.z],[cam0.x,cam0.y,cam0.z]);
+  await page.evaluate(()=>office.resize());await page.waitForTimeout(100);
+  const cam2=await cam();assert.deepEqual([cam2.x,cam2.y,cam2.z].map(v=>v.toFixed(3)),[cam1.x,cam1.y,cam1.z].map(v=>v.toFixed(3)));
+  await page.evaluate(()=>office.fitCamera3D(true));
+  check('3D: two-finger scroll and arrow keys pan, a pinch zooms, and a resize keeps the pan');
   // Grow past the desks and back twice; the first round also uploads the shared textures of models not yet on screen.
   const actors0=await page.evaluate(()=>office.actors.size);
   const textures=[];
