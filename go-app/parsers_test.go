@@ -246,6 +246,50 @@ func TestApplyClaudeAiTitleAndWorkspace(t *testing.T) {
 	}
 }
 
+func TestApplyClaudeCompactSummaryKeepsTurn(t *testing.T) {
+	s := newSession("claude", "s", "f")
+	applyClaude(s, parseJSON(t, jsonLine(t, claudeUser("Long task"))))
+	applyClaude(s, parseJSON(t, jsonLine(t, claudeToolUse("Bash", map[string]any{"command": "make"}))))
+	started := s.TurnStartedAt
+	summary := map[string]any{
+		"type": "user", "timestamp": ts(0), "isCompactSummary": true, "isVisibleInTranscriptOnly": true,
+		"message": map[string]any{"role": "user", "content": "This session is being continued from a previous conversation that ran out of context."},
+	}
+	applyClaude(s, parseJSON(t, jsonLine(t, summary)))
+	if s.Prompt != "Long task" || s.TurnStartedAt != started || s.Status != "tool" {
+		t.Errorf("compact summary must not start a new turn: %+v", s)
+	}
+}
+
+func TestApplyClaudeContextTokens(t *testing.T) {
+	withUsage := func(input, created, read float64) map[string]any {
+		m := claudeText("x", "")
+		m["message"].(map[string]any)["usage"] = map[string]any{
+			"input_tokens": input, "cache_creation_input_tokens": created, "cache_read_input_tokens": read, "output_tokens": 500,
+		}
+		return m
+	}
+	s := newSession("claude", "s", "f")
+	applyClaude(s, parseJSON(t, jsonLine(t, withUsage(2, 25_000, 300_000))))
+	if s.ContextTokens != 325_002 {
+		t.Fatalf("context = input + cache creation + cache read: %d", s.ContextTokens)
+	}
+	applyClaude(s, parseJSON(t, jsonLine(t, withUsage(0, 0, 0))))
+	if s.ContextTokens != 325_002 {
+		t.Errorf("an all-zero usage (synthetic message) must not reset it: %d", s.ContextTokens)
+	}
+	side := withUsage(1, 1, 1)
+	side["isSidechain"] = true
+	applyClaude(s, parseJSON(t, jsonLine(t, side)))
+	if s.ContextTokens != 325_002 {
+		t.Errorf("sidechain usage is another context: %d", s.ContextTokens)
+	}
+	applyClaude(s, parseJSON(t, `{"type":"system","subtype":"compact_boundary","timestamp":"`+ts(0)+`","compactMetadata":{"trigger":"auto","preTokens":367491,"postTokens":18630}}`))
+	if s.ContextTokens != 18_630 {
+		t.Errorf("compact_boundary drops the context to postTokens: %d", s.ContextTokens)
+	}
+}
+
 func TestDescribeClaudeTool(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -314,6 +358,26 @@ func TestApplyCodexMetaAndTurn(t *testing.T) {
 	applyCodex(s, parseJSON(t, codexLine("event_msg", map[string]any{"type": "task_complete", "last_agent_message": "Done."})))
 	if s.Status != "done" || s.Reply != "Done." {
 		t.Fatalf("task_complete: %+v", s)
+	}
+}
+
+func TestApplyCodexTokenCount(t *testing.T) {
+	s := newSession("codex", "c", "f")
+	applyCodex(s, parseJSON(t, codexLine("event_msg", map[string]any{"type": "token_count", "info": nil})))
+	if s.ContextTokens != 0 || s.ContextWindow != 0 {
+		t.Fatalf("token_count without info: %+v", s)
+	}
+	applyCodex(s, parseJSON(t, codexLine("event_msg", map[string]any{"type": "token_count", "info": map[string]any{
+		"total_token_usage":    map[string]any{"input_tokens": 900_000},
+		"last_token_usage":     map[string]any{"input_tokens": 237_489, "cached_input_tokens": 200_000},
+		"model_context_window": 258_400,
+	}})))
+	if s.ContextTokens != 237_489 || s.ContextWindow != 258_400 {
+		t.Fatalf("context is the last request's input, not the running total: %+v", s)
+	}
+	applyCodex(s, parseJSON(t, codexLine("compacted", map[string]any{"message": ""})))
+	if s.ContextTokens != 0 || s.ContextWindow != 258_400 {
+		t.Errorf("compacted clears the context until the next token_count: %+v", s)
 	}
 }
 

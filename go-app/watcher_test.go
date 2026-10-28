@@ -272,6 +272,46 @@ func TestWatcherBigFileReadsHeadAndTail(t *testing.T) {
 	}
 }
 
+func TestWatcherBigFileTurnStartComesFromTail(t *testing.T) {
+	claude, _, _ := setLogDirs(t)
+	bigLog := func(name string, tail ...map[string]any) Session {
+		var b strings.Builder
+		b.WriteString(jsonLine(t, claudeUser("Old prompt")))
+		b.WriteString("\n")
+		filler := strings.Repeat("x", 1000) + "\n"
+		for b.Len() < headBytes+tailBytes+100_000 {
+			b.WriteString(filler)
+		}
+		for _, rec := range tail {
+			b.WriteString(jsonLine(t, rec))
+			b.WriteString("\n")
+		}
+		writeFile(t, filepath.Join(claude, "-p", name+".jsonl"), b.String())
+		w := NewWatcher(24)
+		w.Tick()
+		for _, s := range w.Sessions() {
+			if s.ID == name {
+				return s
+			}
+		}
+		t.Fatalf("%s not tracked", name)
+		return Session{}
+	}
+
+	tool := claudeToolUse("Bash", map[string]any{"command": "make"})
+	s := bigLog("noprompt", tool)
+	if s.TurnStartedAt != 0 || s.TurnStartFloor != parseTime(tool["timestamp"].(string)) {
+		t.Errorf("no prompt in the tail: turn start must fall back to the tail's first event: %+v", s)
+	}
+
+	prompt := claudeUser("Current prompt")
+	prompt["timestamp"] = ts(-5 * time.Minute)
+	s = bigLog("prompt", prompt, tool)
+	if s.TurnStartedAt != parseTime(prompt["timestamp"].(string)) || s.TurnStartFloor != 0 {
+		t.Errorf("prompt in the tail sets the turn start: %+v", s)
+	}
+}
+
 func TestWatcherCodexNamesAndGeminiProjects(t *testing.T) {
 	_, codex, gemini := setLogDirs(t)
 	now := time.Now()

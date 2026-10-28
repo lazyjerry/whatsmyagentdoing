@@ -51,6 +51,24 @@ const (
 	UpdateCheckEvery = 30 * time.Minute
 )
 
-func sceneReleaseURL(file string) string {
-	return RepoURL + "/releases/download/scenes/" + file
-}
+// 警告標記（server.go 的 view 用）：跟狀態分開顯示，同一個人可以同時有兩種。
+// 設 0 關閉該項。
+const (
+	// 快要 compact：最新一次請求的 context 達到自動 compact 門檻的這個比例就標記。
+	CompactWarnRatio = 0.85
+	// 本輪太久：思考／執行／撰寫中，這一輪已經跑超過這麼久就標記（等你回應不算）。
+	LongTurnAfter = 60 * time.Minute
+)
+
+// 自動 compact 門檻（compact.go 用）。設定檔讀得到就照設定，以下是讀不到時的預設。
+const (
+	// Claude Code：~/.claude/settings.json 的 modelSettings.<model>.autoCompactWindow 沒設時的 window；
+	// context 已經超過它算出的門檻，就表示是 1M 模型，改用 ClaudeLargeWindow。
+	ClaudeDefaultWindow = 200_000
+	ClaudeLargeWindow   = 1_000_000
+	// Claude Code 的門檻 = window − 這個保留量（20k 留給摘要輸出、13k 緩衝；本機實測吻合）。
+	ClaudeCompactReserve = 33_000
+	// Codex：~/.codex/config.toml 沒設 model_auto_compact_token_limit 時，
+	// 門檻 = log 裡的 model_context_window × 這個比例。
+	CodexCompactRatio = 0.9
+)

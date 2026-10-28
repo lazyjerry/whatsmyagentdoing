@@ -1,7 +1,7 @@
 package main
 
-// HTTP server: static page, JSON snapshot, server-sent events, scene and
-// update endpoints. Port of src/server.js. Listens on loopback only and
+// HTTP server: static page, JSON snapshot, server-sent events and update
+// endpoints. Port of src/server.js. Listens on loopback only and
 // refuses requests whose Host header isn't loopback (DNS rebinding).
 
 import (
@@ -32,10 +32,9 @@ var staticFiles = map[string][2]string{
 }
 
 var mimeTypes = map[string]string{
-	".js":   "text/javascript; charset=utf-8",
-	".glb":  "model/gltf-binary",
-	".png":  "image/png",
-	".json": "application/json",
+	".js":  "text/javascript; charset=utf-8",
+	".glb": "model/gltf-binary",
+	".png": "image/png",
 }
 
 var (
@@ -58,9 +57,6 @@ type Options struct {
 	JSON    bool
 	Demo    bool
 	Stop    bool
-	Scenes  bool
-	Scene   string
-	Remove  string
 	Update  bool
 }
 
@@ -88,6 +84,11 @@ type View struct {
 	TurnStartedAt *int64  `json:"turnStartedAt"`
 	LastEventAt   *int64  `json:"lastEventAt"`
 	StartedAt     *int64  `json:"startedAt"`
+
+	TurnStartApprox bool     `json:"turnStartApprox"` // turnStartedAt is a lower bound: the turn began earlier
+	ContextTokens   *int64   `json:"contextTokens"`   // context size of the latest request
+	CompactAt       *int64   `json:"compactAt"`       // where the CLI compacts on its own
+	Alerts          []string `json:"alerts"`          // "compact", "longTurn": shown apart from the status
 }
 
 type Snapshot struct {
@@ -181,6 +182,23 @@ func view(s Session, now int64, privacy bool) View {
 		TurnStartedAt: nint(s.TurnStartedAt),
 		StartedAt:     nint(s.StartedAt),
 	}
+	if s.TurnStartedAt == 0 && s.TurnStartFloor != 0 {
+		out.TurnStartedAt = nint(s.TurnStartFloor)
+		out.TurnStartApprox = true
+	}
+	// Warnings sit beside the status (config.go): the context is close to
+	// where the CLI compacts on its own, or the turn has been working for long.
+	if s.ContextTokens > 0 {
+		out.ContextTokens = nint(s.ContextTokens)
+		out.CompactAt = nint(s.CompactAt)
+		if CompactWarnRatio > 0 && s.CompactAt > 0 && float64(s.ContextTokens) >= CompactWarnRatio*float64(s.CompactAt) {
+			out.Alerts = append(out.Alerts, "compact")
+		}
+	}
+	working := status == "thinking" || status == "tool" || status == "typing"
+	if LongTurnAfter > 0 && working && out.TurnStartedAt != nil && now-*out.TurnStartedAt > LongTurnAfter.Milliseconds() {
+		out.Alerts = append(out.Alerts, "longTurn")
+	}
 	if s.Cwd != "" {
 		out.Project = nstr(baseName(s.Cwd))
 	}
@@ -253,7 +271,6 @@ func snapshot(src Source, opts Options) Snapshot {
 type Server struct {
 	src      Source
 	opts     Options
-	scenes   Scenes
 	updater  *Updater
 	shutdown func()
 	restart  func()
@@ -268,7 +285,6 @@ func NewServer(src Source, opts Options, updater *Updater, onShutdown, onRestart
 	s := &Server{
 		src:      src,
 		opts:     opts,
-		scenes:   Scenes{},
 		updater:  updater,
 		shutdown: onShutdown,
 		restart:  onRestart,
@@ -344,26 +360,6 @@ func writeJSON(w http.ResponseWriter, status int, v any, noStore bool) {
 	json.NewEncoder(w).Encode(v)
 }
 
-func (s *Server) serveFile(w http.ResponseWriter, root, rel string) {
-	file := filepath.Clean(filepath.Join(root, filepath.FromSlash(rel)))
-	typ := mimeTypes[strings.ToLower(filepath.Ext(file))]
-	if typ == "" || !strings.HasPrefix(file, root+string(filepath.Separator)) || !fileExists(file) {
-		w.WriteHeader(404)
-		return
-	}
-	f, err := os.Open(file)
-	if err != nil {
-		w.WriteHeader(404)
-		return
-	}
-	defer f.Close()
-	// no-cache: a reinstalled scene pack or an updated clone must show up on reload
-	w.Header().Set("Content-Type", typ)
-	w.Header().Set("Cache-Control", "no-cache")
-	w.WriteHeader(200)
-	io.Copy(w, f)
-}
-
 // serveEmbedded answers with a file under one folder (mount) of the embedded
 // static/ tree. Like the Node version, a path that escapes its folder or ends
 // in a slash is a 404, even though the embedded tree itself has nothing secret.
@@ -417,62 +413,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// 3D models, served as-is (3D view only).
 		rel, _ := url.PathUnescape(strings.TrimPrefix(p, "/assets/"))
 		serveEmbedded(w, "assets", rel, "", "no-cache")
-
-	case strings.HasPrefix(p, "/scenes/"):
-		rel, _ := url.PathUnescape(strings.TrimPrefix(p, "/scenes/"))
-		id, rest, _ := strings.Cut(rel, "/")
-		dir := s.scenes.SceneDir(id)
-		if dir == "" {
-			w.WriteHeader(404)
-			return
-		}
-		s.serveFile(w, dir, rest)
-
-	case p == "/api/scenes":
-		cat := s.scenes.Catalog()
-		iconOf := func(x Installed) string {
-			if x.Icon != "" {
-				return x.Icon
-			}
-			for _, c := range cat {
-				if c.ID == x.ID && c.Icon != "" {
-					return c.Icon
-				}
-			}
-			return "🗺️"
-		}
-		have := s.scenes.InstalledList()
-		ids := map[string]bool{}
-		installed := make([]map[string]any, 0, len(have))
-		for _, x := range have {
-			ids[x.ID] = true
-			installed = append(installed, map[string]any{"id": x.ID, "name": x.Name, "version": x.Version, "credits": x.Credits, "icon": iconOf(x)})
-		}
-		available := []map[string]any{}
-		for _, x := range cat {
-			if ids[x.ID] {
-				continue
-			}
-			icon := x.Icon
-			if icon == "" {
-				icon = "🗺️"
-			}
-			available = append(available, map[string]any{"id": x.ID, "name": x.Name, "version": x.Version, "size": x.Size, "credits": x.Credits, "icon": icon})
-		}
-		writeJSON(w, 200, map[string]any{"installed": installed, "available": available}, true)
-
-	case p == "/api/scenes/install" && r.Method == "POST":
-		// Same guard as shutdown: a custom header web pages can't send cross-site.
-		if header != "install" {
-			w.WriteHeader(403)
-			return
-		}
-		x, err := s.scenes.Install(q.Get("id"))
-		if err != nil {
-			writeJSON(w, 400, map[string]any{"ok": false, "error": err.Error()}, false)
-			return
-		}
-		writeJSON(w, 200, map[string]any{"ok": true, "id": x.ID}, false)
 
 	case p == "/api/sessions":
 		writeJSON(w, 200, snapshot(s.src, s.opts), false)

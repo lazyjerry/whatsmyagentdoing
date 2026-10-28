@@ -10,7 +10,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -35,9 +34,6 @@ Options:
   --demo            Show a made-up team instead of your sessions
   --stop            Stop a running dashboard
   --update          Update to the latest version (git pull + go build) and restart a running dashboard
-  --scenes          List 3D scenes (installed and downloadable)
-  --scene <id>      Download a scene if needed and open the office in it
-  --remove-scene <id>  Delete a downloaded scene
   -h, --help        Show this help
 
 Reads (never writes):
@@ -96,14 +92,6 @@ func parseArgs(argv []string, version string) Options {
 			o.Stop = true
 		case a == "--update":
 			o.Update = true
-		case a == "--scenes":
-			o.Scenes = true
-		case a == "--scene":
-			o.Scene = next(&i)
-		case strings.HasPrefix(a, "--scene="):
-			o.Scene = a[8:]
-		case a == "--remove-scene":
-			o.Remove = next(&i)
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown option: %s\n\n%s\n", a, help)
 			os.Exit(1)
@@ -175,7 +163,6 @@ func main() {
 	updater := NewUpdater()
 	version := updater.LocalVersion()
 	o := parseArgs(os.Args[1:], version)
-	scenes := Scenes{}
 
 	if o.Update {
 		before := updater.LocalVersion()
@@ -197,55 +184,6 @@ func main() {
 			}
 		}
 		return
-	}
-
-	if o.Scenes {
-		have := scenes.InstalledList()
-		fmt.Println("3D scenes (pick one with --scene <id>, or from the scene menu in High 3D):")
-		fmt.Println("  office      Office (built in)")
-		for _, x := range have {
-			fmt.Printf("  %-11s %s (installed)\n", x.ID, sceneName(x.Name, x.ID))
-		}
-		for _, x := range scenes.Catalog() {
-			installed := false
-			for _, h := range have {
-				if h.ID == x.ID {
-					installed = true
-				}
-			}
-			if installed {
-				continue
-			}
-			kb := (x.Size + 512) / 1024
-			if kb < 1 {
-				kb = 1
-			}
-			fmt.Printf("  %-11s %s (download, %d KB)\n", x.ID, sceneName(x.Name, x.ID), kb)
-		}
-		return
-	}
-
-	if o.Remove != "" {
-		if scenes.Remove(o.Remove) {
-			fmt.Printf("Removed %s.\n", o.Remove)
-		} else {
-			fmt.Printf("%s isn't a downloaded scene.\n", o.Remove)
-		}
-		return
-	}
-
-	if o.Scene != "" && o.Scene != "office" {
-		had := scenes.SceneDir(o.Scene) != ""
-		x, err := scenes.Install(o.Scene)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		if had {
-			fmt.Printf("Scene %s is ready.\n", x.ID)
-		} else {
-			fmt.Printf("Downloaded scene %s.\n", x.ID)
-		}
 	}
 
 	if o.Stop {
@@ -275,12 +213,8 @@ func main() {
 		return
 	}
 
-	query := ""
-	if o.Scene != "" {
-		query = "/?view=office&quality=high&scene=" + url.QueryEscape(o.Scene)
-	}
 	if alreadyRunning(o.Port) {
-		u := fmt.Sprintf("http://localhost:%d%s", o.Port, query)
+		u := fmt.Sprintf("http://localhost:%d", o.Port)
 		fmt.Printf("Already running at %s\n", u)
 		printUpdateHint(updater)
 		if o.Open {
@@ -317,7 +251,7 @@ func main() {
 			exe, _ := os.Executable()
 			var args []string
 			for _, a := range os.Args[1:] {
-				if a == "--no-open" || strings.HasPrefix(a, "--scene") {
+				if a == "--no-open" {
 					continue
 				}
 				args = append(args, a)
@@ -359,7 +293,7 @@ func main() {
 	fmt.Printf("whatsmyagentdoing v%s → %s  (%s, Ctrl+C to stop)\n", version, u, what)
 	printUpdateHint(updater)
 	if o.Open {
-		openBrowser(u + query)
+		openBrowser(u)
 	}
 
 	httpServer = &http.Server{Handler: app}

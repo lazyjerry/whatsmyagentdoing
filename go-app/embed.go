@@ -1,7 +1,7 @@
 package main
 
 // Everything the page needs ships inside the binary: static/ is a synced
-// copy of the clone's public/, assets/, scenes.json and package.json version
+// copy of the clone's public/, assets/ and package.json version
 // (see scripts/sync-static.sh). The running program never reads the clone.
 
 import (

@@ -269,9 +269,9 @@ func TestStaticAndAssets(t *testing.T) {
 		t.Error("index.html must be served from the embedded tree")
 	}
 	for _, p := range []string{
-		"/assets/../scenes.json", "/assets/../VERSION", "/assets/..%2Fscenes.json",
+		"/assets/../VERSION", "/assets/..%2FVERSION",
 		"/assets/", "/assets/agents/", "/assets/agents/README.md", "/assets/nope.png",
-		"/scenes.json", "/VERSION", "/static/VERSION", "/nope",
+		"/VERSION", "/static/VERSION", "/nope",
 	} {
 		if rec := do(s, "GET", p, nil); rec.Code != 404 {
 			t.Errorf("%s: %d, want 404", p, rec.Code)
@@ -334,18 +334,10 @@ func TestShutdownGuard(t *testing.T) {
 	}
 }
 
-func TestUpdateAndInstallGuards(t *testing.T) {
+func TestUpdateGuard(t *testing.T) {
 	s := newTestServer(t, newFakeSource(), Options{}, nil, nil)
 	if rec := do(s, "POST", "/api/update", nil); rec.Code != 403 {
 		t.Errorf("update without header: %d", rec.Code)
-	}
-	if rec := do(s, "POST", "/api/scenes/install?id=cafe", nil); rec.Code != 403 {
-		t.Errorf("install without header: %d", rec.Code)
-	}
-	setSceneDir(t)
-	rec := do(s, "POST", "/api/scenes/install?id=does-not-exist", map[string]string{"x-whatsmyagentdoing": "install"})
-	if rec.Code != 400 || !strings.Contains(rec.Body.String(), "unknown scene") {
-		t.Errorf("unknown scene: %d %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -371,62 +363,6 @@ func TestApiVersion(t *testing.T) {
 	}
 	if info.Latest == nil || *info.Latest != "99.0.0" || !info.UpdateAvailable {
 		t.Errorf("fake latest: %+v", info)
-	}
-}
-
-func TestApiScenesLists(t *testing.T) {
-	dir := setSceneDir(t)
-	writeFile(t, filepath.Join(dir, "cafe", "manifest.json"), `{"name":{"en":"Café"},"version":1,"credits":"x"}`)
-	s := newTestServer(t, newFakeSource(), Options{}, nil, nil)
-	rec := do(s, "GET", "/api/scenes", nil)
-	var body struct {
-		Installed []map[string]any `json:"installed"`
-		Available []map[string]any `json:"available"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if len(body.Installed) != 1 || body.Installed[0]["id"] != "cafe" || body.Installed[0]["icon"] != "☕" {
-		t.Errorf("installed (icon comes from the catalog): %v", body.Installed)
-	}
-	for _, a := range body.Available {
-		if a["id"] == "cafe" {
-			t.Error("installed scenes must not be listed as available")
-		}
-	}
-	if len(body.Available) != 3 {
-		t.Errorf("catalog has 4 scenes, 1 installed: %d available", len(body.Available))
-	}
-}
-
-func TestServeSceneFiles(t *testing.T) {
-	dir := setSceneDir(t)
-	writeFile(t, filepath.Join(dir, "demo", "manifest.json"), `{"name":"Demo"}`)
-	writeFile(t, filepath.Join(dir, "demo", "models", "a.glb"), "glb-bytes")
-	writeFile(t, filepath.Join(dir, "demo", "LICENSE.txt"), "cc0")
-	writeFile(t, filepath.Join(dir, "secret.json"), `{}`)
-	s := newTestServer(t, newFakeSource(), Options{}, nil, nil)
-
-	rec := do(s, "GET", "/scenes/demo/manifest.json", nil)
-	if rec.Code != 200 || rec.Header().Get("Content-Type") != "application/json" || rec.Header().Get("Cache-Control") != "no-cache" {
-		t.Errorf("manifest: %d %q", rec.Code, rec.Header().Get("Content-Type"))
-	}
-	rec = do(s, "GET", "/scenes/demo/models/a.glb", nil)
-	if rec.Code != 200 || rec.Body.String() != "glb-bytes" {
-		t.Errorf("model: %d %q", rec.Code, rec.Body.String())
-	}
-	for _, p := range []string{
-		"/scenes/demo/LICENSE.txt",    // not in the mime allowlist
-		"/scenes/demo/../secret.json", // escapes the scene folder
-		"/scenes/demo/models/../../secret.json",
-		"/scenes/Demo/manifest.json", // invalid id
-		"/scenes/nope/manifest.json", // not installed
-		"/scenes/demo/",              // directory
-		"/scenes/demo/models",        // directory, no extension
-	} {
-		if rec := do(s, "GET", p, nil); rec.Code != 404 {
-			t.Errorf("%s: %d, want 404", p, rec.Code)
-		}
 	}
 }
 
@@ -483,6 +419,49 @@ func TestViewMarksTempDirSessionsAsNotifications(t *testing.T) {
 	v = view(Session{Agent: "codex", ID: "e"}, now, false)
 	if v.PromptKind != nil {
 		t.Errorf("no cwd, no rule: %+v", v)
+	}
+}
+
+func TestViewTurnStartFloor(t *testing.T) {
+	now := time.Now().UnixMilli()
+	v := view(Session{Agent: "claude", ID: "a", Status: "tool", LastEventAt: now, TurnStartFloor: now - 1000}, now, false)
+	if v.TurnStartedAt == nil || *v.TurnStartedAt != now-1000 || !v.TurnStartApprox {
+		t.Errorf("no turn start: the floor stands in, marked approximate: %+v", v)
+	}
+	v = view(Session{Agent: "claude", ID: "a", Status: "tool", LastEventAt: now, TurnStartedAt: now - 500, TurnStartFloor: now - 1000}, now, false)
+	if *v.TurnStartedAt != now-500 || v.TurnStartApprox {
+		t.Errorf("a real turn start wins: %+v", v)
+	}
+}
+
+func TestViewAlerts(t *testing.T) {
+	now := time.Now().UnixMilli()
+	warnAt := int64(CompactWarnRatio * 100_000)
+	cases := []struct {
+		name string
+		s    Session
+		want []string
+	}{
+		{"below the compact ratio", Session{Status: "done", ContextTokens: warnAt - 1, CompactAt: 100_000}, nil},
+		{"at the compact ratio, any status", Session{Status: "done", ContextTokens: warnAt, CompactAt: 100_000}, []string{"compact"}},
+		{"threshold unknown", Session{Status: "done", ContextTokens: 999_999}, nil},
+		{"short turn", Session{Status: "tool", TurnStartedAt: now - (LongTurnAfter - time.Minute).Milliseconds()}, nil},
+		{"long turn", Session{Status: "tool", TurnStartedAt: now - (LongTurnAfter + time.Minute).Milliseconds()}, []string{"longTurn"}},
+		{"long turn from the floor", Session{Status: "thinking", TurnStartFloor: now - (LongTurnAfter + time.Minute).Milliseconds()}, []string{"longTurn"}},
+		{"waiting is not working", Session{Status: "waiting", TurnStartedAt: now - (LongTurnAfter + time.Minute).Milliseconds()}, nil},
+		{"done is not working", Session{Status: "done", TurnStartedAt: now - (LongTurnAfter + time.Minute).Milliseconds()}, nil},
+		{"both", Session{Status: "typing", ContextTokens: 99_000, CompactAt: 100_000, TurnStartedAt: now - (LongTurnAfter + time.Minute).Milliseconds()}, []string{"compact", "longTurn"}},
+	}
+	for _, c := range cases {
+		c.s.Agent, c.s.ID, c.s.LastEventAt = "claude", "x", now
+		v := view(c.s, now, false)
+		if strings.Join(v.Alerts, ",") != strings.Join(c.want, ",") {
+			t.Errorf("%s: alerts %v, want %v", c.name, v.Alerts, c.want)
+		}
+	}
+	v := view(Session{Agent: "claude", ID: "x", ContextTokens: 1234, CompactAt: 100_000}, now, false)
+	if v.ContextTokens == nil || *v.ContextTokens != 1234 || v.CompactAt == nil || *v.CompactAt != 100_000 {
+		t.Errorf("context and threshold are exposed: %+v", v)
 	}
 }
 

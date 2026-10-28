@@ -242,6 +242,8 @@ type Watcher struct {
 	candidates          []candidate
 	changes             chan struct{}
 	stop                chan struct{}
+
+	limits compactLimits // auto-compact thresholds (see compact.go)
 }
 
 func NewWatcher(hours float64) *Watcher {
@@ -438,6 +440,9 @@ func (w *Watcher) Tick() {
 	if w.oc.load(now, since) {
 		changed = true
 	}
+	if w.limits.load() {
+		changed = true
+	}
 
 	// Directory walk every RescanInterval; stat known files every tick.
 	if now-w.lastScan > RescanInterval.Milliseconds() {
@@ -566,14 +571,36 @@ func (w *Watcher) open(c candidate, st os.FileInfo) error {
 		}
 		feed(t, head, true, false)
 		t.partial = ""
+		// A prompt in the head belongs to an old turn; only the tail can say
+		// when the current one began.
+		session.TurnStartedAt = 0
 		tail, err := readRange(c.file, st.Size()-tailBytes, st.Size())
 		if err != nil {
 			return err
 		}
 		feed(t, tail, false, true)
+		if session.TurnStartedAt == 0 {
+			session.TurnStartFloor = firstStamp(tail)
+		}
 	}
 	w.trackers[c.file] = t
 	return nil
+}
+
+// firstStamp is the timestamp of the first whole record in a tail chunk
+// (its first line is cut mid-record and skipped); 0 when there is none.
+func firstStamp(chunk string) int64 {
+	lines := strings.Split(chunk, "\n")
+	for _, line := range lines[1:] {
+		var d map[string]any
+		if json.Unmarshal([]byte(line), &d) != nil {
+			continue
+		}
+		if t := parseTime(str(d, "timestamp")); t != 0 {
+			return t
+		}
+	}
+	return 0
 }
 
 func feed(t *tracker, chunk string, dropLastPartial, dropFirst bool) {
@@ -629,6 +656,9 @@ func (w *Watcher) Sessions() []Session {
 	}
 	for _, s := range w.oc.sessions {
 		out = append(out, *s)
+	}
+	for i := range out {
+		out[i].CompactAt = w.limits.at(&out[i])
 	}
 	return out
 }

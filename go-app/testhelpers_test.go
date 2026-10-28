@@ -143,23 +143,16 @@ func setLogDirs(t *testing.T) (claude, codex, gemini string) {
 	t.Cleanup(func() {
 		claudeDir, codexDir, codexIndex, geminiHomes, geminiDir, agyDB, ocDB = oldClaude, oldCodexDir, oldCodexIndex, oldGemini, oldGeminiDir, oldAgy, oldOC
 	})
+	oldSettings, oldConfig := claudeSettings, codexConfig
+	claudeSettings = filepath.Join(base, "claude", "settings.json")
+	codexConfig = filepath.Join(codex, "config.toml")
+	t.Cleanup(func() { claudeSettings, codexConfig = oldSettings, oldConfig })
 	return claude, codex, gemini
 }
 
-// setSceneDir points scene storage at a temp directory.
-func setSceneDir(t *testing.T) string {
-	t.Helper()
-	dir := filepath.Join(t.TempDir(), "scenes")
-	old := sceneUserDir
-	sceneUserDir = dir
-	t.Cleanup(func() { sceneUserDir = old })
-	return dir
-}
-
-// noNetwork keeps the version check and scene download from reaching out.
+// noNetwork keeps the version check from reaching out.
 func noNetwork(t *testing.T) {
 	t.Helper()
 	t.Setenv("WMAD_NO_UPDATE_CHECK", "1")
 	t.Setenv("WMAD_LATEST_VERSION", "")
-	t.Setenv("WMAD_SCENES_LOCAL", "")
 }

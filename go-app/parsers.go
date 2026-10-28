@@ -49,6 +49,13 @@ type Session struct {
 	Mtime         int64 // file mtime, set by the watcher
 	GeminiProject string
 	titleLocked   bool // a custom (renamed) title beats any later ai-title
+
+	// Big log whose tail holds no prompt: the turn began at or before this
+	// (the tail's first event). Only used while TurnStartedAt is 0.
+	TurnStartFloor int64
+	ContextTokens  int64 // context size of the latest request; 0 when unknown
+	ContextWindow  int64 // Codex's model_context_window
+	CompactAt      int64 // where the CLI compacts on its own; set by the watcher (compact.go)
 }
 
 var waitingTools = map[string]bool{"AskUserQuestion": true, "ExitPlanMode": true}
@@ -87,6 +94,11 @@ func asString(v any) string {
 }
 
 func str(m map[string]any, key string) string { return asString(m[key]) }
+
+func num(m map[string]any, key string) int64 {
+	f, _ := m[key].(float64)
+	return int64(f)
+}
 
 func truthy(v any) bool {
 	switch x := v.(type) {
@@ -387,9 +399,13 @@ func applyClaude(s *Session, v any) {
 			setA(s, "error", "")
 			e := asMap(d["error"])
 			s.Error = short(firstNonEmpty(str(e, "formatted"), str(e, "message"), "API error"), 120)
+		case "compact_boundary":
+			s.ContextTokens = num(asMap(d["compactMetadata"]), "postTokens")
 		}
 	case "user":
-		if truthy(d["isMeta"]) {
+		// The summary written after a compaction is not a prompt: the turn
+		// that ran out of context carries on.
+		if truthy(d["isMeta"]) || truthy(d["isCompactSummary"]) {
 			return
 		}
 		msg := asMap(d["message"])
@@ -450,6 +466,12 @@ func applyClaude(s *Session, v any) {
 		m := asMap(d["message"])
 		if model := str(m, "model"); model != "" && model != "<synthetic>" {
 			s.Model = model
+		}
+		// Every content block repeats the message's usage; the latest one wins.
+		if u := asMap(m["usage"]); u != nil && !truthy(d["isSidechain"]) {
+			if n := num(u, "input_tokens") + num(u, "cache_creation_input_tokens") + num(u, "cache_read_input_tokens"); n > 0 {
+				s.ContextTokens = n
+			}
 		}
 		for _, bv := range asSlice(m["content"]) {
 			b := asMap(bv)
@@ -582,6 +604,8 @@ func applyCodex(s *Session, v any) {
 		if cwd := str(p, "cwd"); cwd != "" {
 			s.Cwd = cwd
 		}
+	case "compacted":
+		s.ContextTokens = 0 // known again at the next token_count
 	case "event_msg":
 		switch str(p, "type") {
 		case "task_started":
@@ -606,6 +630,14 @@ func applyCodex(s *Session, v any) {
 				s.Reply = r
 			}
 			setA(s, "typing", "")
+		case "token_count":
+			info := asMap(p["info"])
+			if n := num(asMap(info["last_token_usage"]), "input_tokens"); n > 0 {
+				s.ContextTokens = n
+			}
+			if w := num(info, "model_context_window"); w > 0 {
+				s.ContextWindow = w
+			}
 		case "exec_approval_request", "apply_patch_approval_request", "request_user_input":
 			setA(s, "waiting", "Needs your approval")
 		case "item_started", "item_completed":

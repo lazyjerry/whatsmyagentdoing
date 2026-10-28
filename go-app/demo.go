@@ -56,6 +56,8 @@ type demoSession struct {
 	offset float64
 	asks   bool
 	key    string
+
+	longTurn bool // every turn reads as older than LongTurnAfter, to show that warning
 }
 
 type DemoWatcher struct {
@@ -87,6 +89,9 @@ func NewDemoWatcher() *DemoWatcher {
 			asks: i == 2 || i == 6,
 		})
 	}
+	// Two members carry the warnings: one close to compacting, one in a long turn.
+	w.list[5].ContextTokens, w.list[5].CompactAt = 330_000, 367_000
+	w.list[1].longTurn = true
 	return w
 }
 
@@ -146,6 +151,9 @@ func (w *DemoWatcher) Tick() {
 		if step == 0 {
 			s.TurnStartedAt = now - int64(k*1000)
 			s.Reply = ""
+			if s.longTurn {
+				s.TurnStartedAt -= (LongTurnAfter + 12*time.Minute).Milliseconds()
+			}
 		}
 		s.Status = status
 		s.LastEventAt = now

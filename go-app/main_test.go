@@ -10,18 +10,18 @@ import (
 
 func TestParseArgsDefaults(t *testing.T) {
 	o := parseArgs(nil, "0.0.0")
-	if o.Port != 4545 || o.Hours != 24 || !o.Open || o.Privacy || o.JSON || o.Demo || o.Stop || o.Update || o.Scenes || o.Scene != "" || o.Remove != "" {
+	if o.Port != 4545 || o.Hours != 24 || !o.Open || o.Privacy || o.JSON || o.Demo || o.Stop || o.Update {
 		t.Errorf("defaults: %+v", o)
 	}
 }
 
 func TestParseArgsAllFlags(t *testing.T) {
-	o := parseArgs(strings.Fields("-p 5000 --hours 2 --no-open --private --json --demo --stop --update --scenes --scene cafe --remove-scene castle"), "0.0.0")
-	if o.Port != 5000 || o.Hours != 2 || o.Open || !o.Privacy || !o.JSON || !o.Demo || !o.Stop || !o.Update || !o.Scenes || o.Scene != "cafe" || o.Remove != "castle" {
+	o := parseArgs(strings.Fields("-p 5000 --hours 2 --no-open --private --json --demo --stop --update"), "0.0.0")
+	if o.Port != 5000 || o.Hours != 2 || o.Open || !o.Privacy || !o.JSON || !o.Demo || !o.Stop || !o.Update {
 		t.Errorf("flags: %+v", o)
 	}
-	o = parseArgs(strings.Fields("--port=4546 --hours=1.5 --scene=station"), "0.0.0")
-	if o.Port != 4546 || o.Hours != 1.5 || o.Scene != "station" {
+	o = parseArgs(strings.Fields("--port=4546 --hours=1.5"), "0.0.0")
+	if o.Port != 4546 || o.Hours != 1.5 {
 		t.Errorf("equals form: %+v", o)
 	}
 	o = parseArgs(strings.Fields("--port 4547"), "0.0.0")
@@ -32,7 +32,7 @@ func TestParseArgsAllFlags(t *testing.T) {
 
 func TestHelpTextMentionsEveryFlag(t *testing.T) {
 	h := helpText("1.2.3")
-	for _, flag := range []string{"1.2.3", "--port", "--hours", "--no-open", "--private", "--json", "--demo", "--stop", "--update", "--scenes", "--scene", "--remove-scene", "CLAUDE_CONFIG_DIR", "WMAD_SRC"} {
+	for _, flag := range []string{"1.2.3", "--port", "--hours", "--no-open", "--private", "--json", "--demo", "--stop", "--update", "CLAUDE_CONFIG_DIR", "WMAD_SRC"} {
 		if !strings.Contains(h, flag) {
 			t.Errorf("help lacks %s", flag)
 		}

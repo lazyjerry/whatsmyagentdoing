@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 重建執行檔、複製進 skill，再（重新）啟動儀表板——改完前端或 Go 之後一條指令看到結果。
 #   scripts/start.sh                 重建 + 安裝 + 重啟（預設埠 4545）
-#   scripts/start.sh --port 5000     指定埠；其餘旗標原樣傳給執行檔（--private、--hours、--scene…）
+#   scripts/start.sh --port 5000     指定埠；其餘旗標原樣傳給執行檔（--private、--hours…）
 #   scripts/start.sh --no-build      跳過重建，只重啟（例如剛跑過 build.sh）
 # 執行檔把前端 embed 進去，所以舊程序永遠送建置當下的頁面：重建後一定要重啟才看得到改動。
 # 原本就在跑的話，重啟時不再開新分頁（既有分頁重新整理即可）；原本沒在跑才開瀏覽器。

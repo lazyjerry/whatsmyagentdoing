@@ -265,14 +265,6 @@ func TestCLIInfoCommands(t *testing.T) {
 	if code != 1 {
 		t.Errorf("bad number: %d\n%s", code, out)
 	}
-	out, code = e.run(t, "--scenes")
-	if code != 0 || !strings.Contains(out, "office      Office (built in)") || !strings.Contains(out, "cafe") || !strings.Contains(out, "(download,") {
-		t.Errorf("UC-07 list: %d\n%s", code, out)
-	}
-	out, code = e.run(t, "--remove-scene", "cafe")
-	if code != 0 || !strings.Contains(out, "isn't a downloaded scene") {
-		t.Errorf("UC-07 remove missing: %d\n%s", code, out)
-	}
 	out, code = e.run(t, "--stop", "-p", strconv.Itoa(freePort(t)))
 	if code != 0 || strings.TrimSpace(out) != "Not running." {
 		t.Errorf("UC-03 nothing to stop: %d %q", code, out)

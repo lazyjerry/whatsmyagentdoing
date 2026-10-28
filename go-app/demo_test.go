@@ -46,6 +46,19 @@ func TestDemoTeam(t *testing.T) {
 	}
 }
 
+func TestDemoShowsWarnings(t *testing.T) {
+	w := NewDemoWatcher()
+	now := time.Now().UnixMilli()
+	if v := view(w.list[5].Session, now, false); len(v.Alerts) != 1 || v.Alerts[0] != "compact" {
+		t.Errorf("member 5 is close to compacting: %v", v.Alerts)
+	}
+	// Member 1's turn start is pushed back at step 0 of each cycle (Tick), which
+	// a test cannot reach without waiting for the clock.
+	if !w.list[1].longTurn {
+		t.Error("member 1 is the long-turn one")
+	}
+}
+
 func TestDemoTickIsIdempotentWithinAStep(t *testing.T) {
 	w := NewDemoWatcher()
 	w.Tick()
