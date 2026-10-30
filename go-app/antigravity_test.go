@@ -249,3 +249,50 @@ func TestAgyLogStart(t *testing.T) {
 		t.Error("other names must parse to 0")
 	}
 }
+
+func TestAgyRunWithoutARowYetShowsAsAStandIn(t *testing.T) {
+	const conv = "35407326-37ae-440f-b744-8e4494cba777"
+	db := agyFixture(t)
+	started := time.Now().Add(-90 * time.Second)
+	writeFile(t, filepath.Join(agyLogDir, "cli-"+started.Format("20060102_150405")+".log"),
+		"I1030 23:40:00.000000      27 server.go:1897] Starting language server process with pid 4343\n"+
+			"I1030 23:40:00.781482       1 manager.go:499] Initializing CLI store manager for workspace /work/翻譯\n"+
+			"I1030 23:40:05.761156       1 session.go:201] Print mode: conversation="+conv+", sending message\n")
+	alive := map[int]bool{4343: true}
+	var psErr error
+	fakeAgyAlive(t, alive, &psErr)
+
+	w := NewWatcher(24)
+	w.Tick()
+	ss := w.Sessions()
+	if len(ss) != 1 || w.Count() != 1 {
+		t.Fatalf("a live run with no row yet: %+v", ss)
+	}
+	s := ss[0]
+	if s.ID != conv || s.Agent != "gemini" || s.Tool != "agy" || s.Platform != "cli" || s.Status != "thinking" ||
+		s.Cwd != "/work/翻譯" || s.TurnStartedAt != agyLogStart(filepath.Base(started.Format("cli-20060102_150405.log"))) {
+		t.Errorf("stand-in: %+v", s)
+	}
+
+	// The row lands: it replaces the stand-in, still working.
+	if out, err := exec.Command("sqlite3", db, `insert into conversation_summaries values ('`+conv+`','','翻譯',3,'`+agyStamp(0)+`','[]','CASCADE_RUN_STATUS_IDLE','CORTEX_TRAJECTORY_SOURCE_CLI','',0,0,0,'`+agyStamp(-time.Minute)+`');`).CombinedOutput(); err != nil {
+		t.Fatalf("sqlite3: %v\n%s", err, out)
+	}
+	w.agy.mtime = 0 // same-second write: force the re-read
+	w.Tick()
+	ss = w.Sessions()
+	if len(ss) != 1 || ss[0].Status != "thinking" || ss[0].Prompt != "翻譯" {
+		t.Fatalf("row replaces the stand-in: %+v", ss)
+	}
+
+	// Process gone before any row: the stand-in goes with it.
+	if out, err := exec.Command("sqlite3", db, `delete from conversation_summaries;`).CombinedOutput(); err != nil {
+		t.Fatalf("sqlite3: %v\n%s", err, out)
+	}
+	w.agy.mtime = 0
+	delete(alive, 4343)
+	w.Tick()
+	if n := w.Count(); n != 0 {
+		t.Fatalf("stand-in must leave with its process: %+v", w.Sessions())
+	}
+}

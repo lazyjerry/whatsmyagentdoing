@@ -141,7 +141,9 @@ func agySession(r agyRow) *Session {
 // seconds in, a print run names its conversation. That conversation counts as
 // working while the pid is alive and still an agy process. The live set is
 // rebuilt every tick and nothing is latched, so a run that ends (or is killed)
-// falls back to its row's own status on the next tick.
+// falls back to its row's own status on the next tick. A long run may not
+// write its row until it ends; until then it shows as a stand-in session built
+// from the log (workspace and start time, no prompt).
 
 var agyLogDir = filepath.Join(geminiHomes[0], "antigravity-cli", "log")
 
@@ -153,6 +155,7 @@ const (
 var (
 	reAgyPid  = regexp.MustCompile(`language server process with pid (\d+)`)
 	reAgyConv = regexp.MustCompile(`Print mode: conversation=([0-9a-f-]{36})`)
+	reAgyCwd  = regexp.MustCompile(`(?m)CLI store manager for workspace (.+)$`)
 )
 
 // agyRun is what one CLI log has said so far.
@@ -161,6 +164,7 @@ type agyRun struct {
 	size  int64 // bytes seen at the last read
 	pid   int
 	conv  string
+	cwd   string
 	dead  bool // process gone, or the log gave up on naming a conversation
 }
 
@@ -168,11 +172,11 @@ type agyRun struct {
 type agyRuns struct {
 	dirMtime int64
 	logs     map[string]*agyRun // log path -> what it said
-	live     map[string]bool    // conversation id -> its process is running
+	live     map[string]*agyRun // conversation id -> its run, while the process is running
 }
 
 func newAgyRuns() *agyRuns {
-	return &agyRuns{logs: map[string]*agyRun{}, live: map[string]bool{}}
+	return &agyRuns{logs: map[string]*agyRun{}, live: map[string]*agyRun{}}
 }
 
 // agyLogStart parses the start time out of "cli-20261030_233139.log".
@@ -198,6 +202,9 @@ func (r *agyRun) read(path string, now int64) {
 			f.Close()
 			if m := reAgyPid.FindSubmatch(head); m != nil {
 				r.pid, _ = strconv.Atoi(string(m[1]))
+			}
+			if m := reAgyCwd.FindSubmatch(head); m != nil {
+				r.cwd = strings.TrimSpace(string(m[1]))
 			}
 			if m := reAgyConv.FindSubmatch(head); m != nil && r.pid > 0 {
 				r.conv = string(m[1])
@@ -237,7 +244,7 @@ func (a *agyRuns) load(now, since int64) bool {
 			newest[r.pid] = r
 		}
 	}
-	live := map[string]bool{}
+	live := map[string]*agyRun{}
 	if len(newest) > 0 {
 		pids := make([]int, 0, len(newest))
 		for pid := range newest {
@@ -248,7 +255,7 @@ func (a *agyRuns) load(now, since int64) bool {
 		if alive, err := agyAlive(pids); err == nil {
 			for pid, r := range newest {
 				if alive[pid] {
-					live[r.conv] = true
+					live[r.conv] = r
 				} else {
 					r.dead = true
 				}
@@ -258,6 +265,29 @@ func (a *agyRuns) load(now, since int64) bool {
 	changed := !maps.Equal(live, a.live)
 	a.live = live
 	return changed
+}
+
+// pending returns a stand-in session for each live run whose row isn't in
+// rows yet.
+func (a *agyRuns) pending(rows map[string]*Session) []*Session {
+	var out []*Session
+	for conv, r := range a.live {
+		if rows[conv] != nil {
+			continue
+		}
+		s := newSession("gemini", conv, agyDB)
+		s.SessionID = conv
+		s.Tool = "agy"
+		s.Platform = "cli"
+		s.Cwd = r.cwd
+		s.Workspace = r.cwd
+		s.LastEventAt = r.start
+		s.Mtime = r.start
+		s.TurnStartedAt = r.start
+		s.Status = "thinking"
+		out = append(out, s)
+	}
+	return out
 }
 
 // agyAlive reports which pids are still agy processes; a pid handed to some

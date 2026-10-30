@@ -658,10 +658,13 @@ func (w *Watcher) Sessions() []Session {
 	}
 	for _, s := range w.agy.sessions {
 		c := *s
-		if w.agyRuns.live[c.ID] {
+		if w.agyRuns.live[c.ID] != nil {
 			c.Status = "thinking"
 		}
 		out = append(out, c)
+	}
+	for _, s := range w.agyRuns.pending(w.agy.sessions) {
+		out = append(out, *s)
 	}
 	for _, s := range w.oc.sessions {
 		out = append(out, *s)
@@ -676,7 +679,7 @@ func (w *Watcher) Sessions() []Session {
 func (w *Watcher) Count() int {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return len(w.trackers) + len(w.agy.sessions) + len(w.oc.sessions)
+	return len(w.trackers) + len(w.agy.sessions) + len(w.agyRuns.pending(w.agy.sessions)) + len(w.oc.sessions)
 }
 
 func describeDirs() string {
