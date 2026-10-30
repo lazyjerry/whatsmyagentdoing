@@ -90,7 +90,7 @@ skill 呼叫的就是這個執行檔（`scripts/installSkill.sh` 複製到 `skil
 
 ## 它長什麼樣
 
-開啟的是一間等角視角的**辦公室**。正在工作的 agent 坐在隔間座位上：思考時冒出思考泡泡、執行工具時打字且螢幕上有程式碼捲動、出錯時站起來揮手；座位旁的牆上掛著業績白板。等你回應的 agent（要授權或問問題）到電話亭排隊打給你，亭內是等最久的那個。工作中帶著「快要 compact」或「本輪太久」警告的 agent 進會議室，一個人就坐著，兩個以上就隔著桌子吵架。最近剛完工的幾個 agent 留在左前方的沙發區：剛完成的坐著滑手機，完成十分鐘以上的坐到電視前的沙發看電視；沙發坐滿或閒置、中斷的，到茶水間和旁邊的休息區晃晃。其他人都回家了。點業績白板、會議室白板、電話亭、電視或冰箱會說明那一區的用途。窗景跟著你的本地時間變化（Medium 模式還有一隻辦公室貓）。滑鼠移到任何人身上就能看到它正在處理什麼。
+開啟的是一間等角視角的**辦公室**。正在工作的 agent 坐在隔間座位上：思考時冒出思考泡泡、執行工具時打字且螢幕上有程式碼捲動、出錯時站起來揮手；座位旁的左牆掛著橫跨兩組辦公桌的業績白板。一個胖嘟嘟的光頭老闆每分鐘巡一輪：先把業績白板擦掉、寫上新的（虛構）數字，再進會議室把白板擦掉重寫；會議室白板平常每幾秒翻一頁（議程、流程圖、燃盡圖、投票）。等你回應的 agent（要授權或問問題）到伺服器旁的專線座位排隊找你，坐在電腦前的是等最久的那個，其他人在前方走道排隊。工作中帶著「快要 compact」或「本輪太久」警告的 agent 進會議室，一個人就坐著，兩個以上就隔著桌子吵架。最近剛完工的幾個 agent 先坐右下角休息區的沙發（滑手機）和懶骨頭（聽音樂）；那邊坐滿了，其他人到左前方的沙發區看電視，再滿就坐旁邊的沙發滑手機。全部坐滿或閒置、中斷的，到茶水間和休息區晃晃；冰箱偶爾會冒出一陣冷氣。電視播放 GIF：預設是內建的幾段公有領域實拍（Muybridge 的賽馬與野牛、Apollo 發射與月面），也可以換成自己的（見下方 `--tv-dir`）。其他人都回家了。點業績白板、會議室白板、專線座位、電視或冰箱會說明那一區的用途。窗景跟著你的本地時間變化（Medium 模式還有一隻辦公室貓）。滑鼠移到任何人身上就能看到它正在處理什麼。
 
 兩種畫風：**Medium** 是手繪風 2D canvas（零依賴）。**High（3D）** 用即時光影渲染同一間辦公室，採用 [Kenney](https://kenney.nl) 的 CC0 *Mini Characters*（含走路／坐下／互動動畫）與 *Furniture Kit*；拖曳旋轉，觸控板雙指滑動、滑鼠滾輪或方向鍵平移，捏合（或按住 Ctrl 滾動）縮放。3D bundle（three.js，gzip 後約 180 KB）與模型（約 1.3 MB，meshopt 壓縮）只在選擇 High 時才載入。
 
@@ -141,7 +141,10 @@ skill 的 `skills/myoffice/bin/whatsmyagentdoing` 與直接建出的 `go-app/wha
 --demo            顯示虛構團隊而非你的 session（截圖、試玩用）
 --stop            停止正在執行的 dashboard（或說 /myoffice stop）
 --update          更新到最新版並重啟（或說 /myoffice update）
+--tv-dir <dir>    沙發區電視要播的 GIF 資料夾（預設 ~/.whatsmyagentdoing/tv）
 ```
+
+**電視：** 資料夾裡的 `.gif` 依檔名順序輪播，每段至少播 15 秒、在播完一輪時換下一段，最長 30 秒；只有一段就一直循環。頁面每分鐘重讀一次資料夾，放新檔不必重啟。資料夾不存在或沒有 GIF 時，播執行檔內建的公有領域片段。只讀資料夾第一層、不讀子資料夾，略過隱藏檔與超過 20 MB 的檔案。畫面由瀏覽器的 `ImageDecoder` 逐格解碼，Safari 不支援時電視維持原本的變色螢幕。
 
 執行中再跑一次只會重新開啟分頁。
 
@@ -191,6 +194,20 @@ skill 的 `skills/myoffice/bin/whatsmyagentdoing` 與直接建出的 `go-app/wha
 | `ClaudeCompactReserve` | 33,000 | Claude Code 的門檻 = window − 這個保留量（20k 摘要輸出＋13k 緩衝，本機實測吻合） |
 | `CodexCompactRatio` | 0.9 | Codex 的 `~/.codex/config.toml` 沒設 `model_auto_compact_token_limit` 時，門檻 = log 裡的 `model_context_window` × 這個比例 |
 
+**詳細資訊視窗。** 點辦公室裡的人物會固定它的卡片；固定的卡片與每張列表卡片上都有「詳細」按鈕（不論狀態），按下開一個視窗，顯示該 session 的狀態、最後的提示詞與回覆全文（保留換行；工作中顯示本輪目前寫到的回覆）、目錄與 id，底部是跟列表卡片相同的動作按鈕：複製接續指令、複製標題、在 VS Code 開啟。全文由 `/api/session?key=` 另外取，SSE 快照仍只送 220 字預覽。
+
+| 常數 | 預設 | 意思 |
+|---|---|---|
+| `FullTextMax` | 20,000 | 視窗裡的提示詞與回覆各最多這麼多字 |
+
+**電視。** 見上方「選項」的 `--tv-dir`。
+
+| 常數 | 預設 | 意思 |
+|---|---|---|
+| `TVDir` | `.whatsmyagentdoing/tv` | 家目錄下的電視資料夾，`--tv-dir` 可改成別處 |
+| `TVMaxBytes` | 20 MB | 超過這個大小的 GIF 不播（頁面要把整個檔案讀進來解碼） |
+| `TVMaxClips` | 50 | 片單最多幾段 |
+
 ## 運作原理
 
 不需要 hook、不需要設定、不需要 API key。這些工具本來就會在工作時把每則訊息與工具呼叫 append 到 JSONL 檔：
@@ -230,3 +247,4 @@ MIT，見 [LICENSE](LICENSE)。本倉庫 fork 自 [Charonyuu/whatsmyagentdoing](
 - **three.js**（MIT，Copyright Three.js Authors）：3D 畫面使用，授權聲明保留在 `public/office3d.js` 尾端。
 - **Kenney** 模型（CC0）：`skills/myoffice/assets/kenney/`，見目錄內的授權檔。CC0 不要求署名，仍感謝 [Kenney](https://kenney.nl)。
 - **Agent logo**：Claude、Codex、Gemini、OpenCode 的官方圖示為各自所有者的商標，本專案未獲其背書，MIT 授權不及於商標；來源見[圖示來源與授權](skills/myoffice/assets/agents/README.md)。
+- **電視內建片段**（公有領域）：`skills/myoffice/assets/tv/`，Eadweard Muybridge 1887 年的動物動態攝影與 NASA 的 Apollo 影像，取自 Wikimedia Commons；出處見[片段來源](skills/myoffice/assets/tv/README.md)。

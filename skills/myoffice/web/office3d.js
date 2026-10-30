@@ -27,6 +27,7 @@ const STATUS_COLOR = {
   thinking: 0x8b6be6, tool: 0x3b8ee0, typing: 0x22a874, waiting: 0xe09412, error: 0xde4b40,
 };
 const CHAR_HEIGHT = 0.92; // world units (≈ tiles)
+const BOSS_FAT = new THREE.Vector3(1.5, 1.05, 1.45); // the boss's torso, widened
 const WALL_H = 2.4;
 const SIT_FORWARD = 0.16;
 
@@ -235,6 +236,9 @@ export class Office3D extends window.Office {
     // Props from the old room must not be animated once the plan regrows.
     this.arcadeScreen = null;
     this.tvScreen = null;
+    this.tvPicture = null;
+    this.boardTex = {};
+    this.smoke = null;
     this.lampLight = null;
     const { W, D, OW, MR, PY } = plan;
     const dark = this.pal.dark;
@@ -292,16 +296,15 @@ export class Office3D extends window.Office {
     this.boxMesh(-T + 0.02, dy - 0.55, 0, 0.06, 1.1, 1.78, dark ? 0x5c4431 : 0xa8825a);
     this.boxMesh(0, dy - 0.6, 0, 0.9, 1.2, 0.01, dark ? 0x5a3b2e : 0xb9654a, { shadow: false });
     // meeting room whiteboard
-    const wb = this.textPlane('', '#fdfdfb', 2.6, 1.15);
-    wb.position.set(OW + 3.7, 1.4, 0.005);
+    const wb = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.15), new THREE.MeshStandardMaterial({ map: this.boardTexture('meet'), roughness: 0.9 }));
+    wb.position.set(OW + 3.7, 1.375, 0.005);
     this.room.add(wb);
-    this.whiteboardScribbles(OW + 3.7);
     const sign = this.textPlane('MEETING', dark ? '#3a4a5a' : '#8ea3b8', 1.3, 0.3);
     sign.position.set(OW + 1.1, 2.15, 0.005);
     this.room.add(sign);
 
     // desks
-    for (const dk of plan.desks) this.buildDesk(dk);
+    for (const dk of [...plan.desks, plan.solo]) this.buildDesk(dk);
 
     for (const p of plan.props) this.buildProp(p);
     this.fitCamera3D(true);
@@ -315,22 +318,6 @@ export class Office3D extends window.Office {
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.colorSpace = THREE.SRGBColorSpace;
     return t;
-  }
-
-  whiteboardScribbles(cx) {
-    const g = new THREE.Group();
-    const line = (pts, color) => {
-      const geo = new THREE.BufferGeometry().setFromPoints(pts.map(([x, y]) => new THREE.Vector3(x, y, 0)));
-      g.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color })));
-    };
-    line([[-1.1, 0.35], [-0.6, 0.35]], 0x3b8ee0);
-    line([[-1.1, 0.2], [-0.3, 0.2]], 0x3b8ee0);
-    line([[0.0, 0.3], [0.4, 0.3], [0.4, 0.05], [0.0, 0.05], [0.0, 0.3]], 0xc96442);
-    line([[0.4, 0.17], [0.65, 0.0]], 0xc96442);
-    line([[0.65, 0.1], [1.05, 0.1], [1.05, -0.15], [0.65, -0.15], [0.65, 0.1]], 0xc96442);
-    line([[-1.1, -0.35], [-0.9, -0.1], [-0.7, -0.3], [-0.5, -0.05], [-0.3, -0.25], [-0.1, 0.0]], 0x5f9a4c);
-    g.position.set(cx, 1.4, 0.01);
-    this.room.add(g);
   }
 
   buildDesk(dk) {
@@ -386,20 +373,6 @@ export class Office3D extends window.Office {
       case 'plant':
         this.place('pottedPlant', p.x - 0.3, p.y - 0.3, 0.6, 0.6, { h: 1.0 });
         break;
-      case 'booth': {
-        const { x, y } = p;
-        const felt = new THREE.MeshStandardMaterial({ color: dark ? 0x3c4a5a : 0x9fb3c8, roughness: 1 });
-        this.boxMesh(x, y - 0.05, 0, 1.3, 0.05, 2.0, 0, { mat: felt });
-        this.boxMesh(x - 0.05, y, 0, 0.05, 1.3, 2.0, 0, { mat: felt });
-        this.boxMesh(x + 1.25, y, 0, 0.05, 1.3, 2.0, 0, { mat: this.glassMat(), shadow: false });
-        this.boxMesh(x, y + 1.25, 0, 0.85, 0.05, 2.0, 0, { mat: this.glassMat(), shadow: false });
-        this.boxMesh(x - 0.05, y - 0.05, 2.0, 1.4, 1.4, 0.06, dark ? 0x4a5868 : 0xb5c4d3);
-        this.place('stoolBar', x + 0.45, y + 0.4, 0.4, 0.4, { h: 0.5 });
-        const l = new THREE.PointLight(0xffd9a0, 0.6, 2.5);
-        l.position.set(x + 0.65, 1.85, y + 0.65);
-        this.room.add(l);
-        break;
-      }
       case 'glass':
         if (p.w === 0) this.boxMesh(p.x - 0.03, p.y, 0, 0.06, p.d, 2.1, 0, { mat: this.glassMat(), shadow: false });
         else this.boxMesh(p.x, p.y - 0.03, 0, p.w, 0.06, 2.1, 0, { mat: this.glassMat(), shadow: false });
@@ -430,6 +403,7 @@ export class Office3D extends window.Office {
         break;
       case 'fridge':
         this.place('kitchenFridgeLarge', p.x, p.y, 0.85, 0.75, { h: 1.95, stretch: true });
+        this.fridgeSmoke3D(p.x, p.y);
         break;
       case 'cooler': {
         this.boxMesh(p.x, p.y, 0, 0.42, 0.42, 0.95, 0xe8ecef, { rough: 0.4 });
@@ -476,12 +450,7 @@ export class Office3D extends window.Office {
         // the sales board on the left wall, same drawing as the 2D office
         this.boxMesh(0, p.y - 0.06, p.z - 0.06, 0.04, p.w + 0.12, p.h + 0.12, 0xb9bec5, { metal: 0.4, rough: 0.4 });
         this.boxMesh(0, p.y + 0.4, p.z - 0.1, 0.1, p.w * 0.5, 0.03, 0x9aa0a6);
-        const cv = document.createElement('canvas');
-        cv.width = 1024; cv.height = 384;
-        window.OFFICE_DRAW_BOARD(cv.getContext('2d'));
-        const tex = new THREE.CanvasTexture(cv);
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.anisotropy = 4;
+        const tex = this.boardTexture('sales');
         const m = new THREE.Mesh(new THREE.PlaneGeometry(p.w, p.h), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7 }));
         m.rotation.y = Math.PI / 2;
         m.position.set(0.045, p.z + p.h / 2, p.y + p.w / 2);
@@ -494,6 +463,15 @@ export class Office3D extends window.Office {
         this.place('speaker', 0.12, p.y + 0.15, 0.25, 0.25, { y0: 0.45, h: 0.3 });
         this.boxMesh(0, p.y, 0.95, 0.06, p.w, 0.9, 0x111214, { metal: 0.3, rough: 0.4 });
         this.tvScreen = this.boxMesh(0.06, p.y + 0.06, 1.0, 0.005, p.w - 0.12, 0.8, 0x000000, { emissive: 0x3b8ee0, ei: 0.7, shadow: false });
+        // the picture: the TV player's canvas, shown once it has a frame
+        this.tvTex = new THREE.CanvasTexture(this.tvPlayer.canvas);
+        this.tvTex.colorSpace = THREE.SRGBColorSpace;
+        this.tvVersion = -1;
+        this.tvPicture = new THREE.Mesh(new THREE.PlaneGeometry(p.w - 0.12, 0.8), new THREE.MeshBasicMaterial({ map: this.tvTex, toneMapped: false }));
+        this.tvPicture.rotation.y = Math.PI / 2;
+        this.tvPicture.position.set(0.07, 1.4, p.y + p.w / 2);
+        this.tvPicture.visible = false;
+        this.room.add(this.tvPicture);
         break;
       case 'coffeeTable':
         this.place('tableCoffee', p.x, p.y, p.w, p.d, { h: 0.35 });
@@ -543,12 +521,7 @@ export class Office3D extends window.Office {
     this.camera.lookAt(this.controls.target);
     this.camera.updateMatrixWorld(true);
     // Fit the room's corners into the view.
-    const inv = this.camera.matrixWorldInverse;
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const x of [0, W]) for (const y of [0, this.plan.viewH || WALL_H]) for (const z of [0, D]) {
-      const v = new THREE.Vector3(x, y, z).applyMatrix4(inv);
-      minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x); minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y);
-    }
+    const { minX, maxX, minY, maxY } = this.roomInView();
     const aspect = this.cw / this.ch;
     let w = (maxX - minX) * 1.06, h = (maxY - minY) * 1.1;
     // Leave room for screen-space badges and bubbles in a small PiP window.
@@ -593,6 +566,31 @@ export class Office3D extends window.Office {
     this.controls.target.add(move);
   }
 
+  // The room's bounding box in camera space, where the view is centred on 0.
+  roomInView() {
+    const { W, D } = this.plan;
+    const inv = this.camera.matrixWorldInverse;
+    const v = new THREE.Vector3();
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const x of [0, W]) for (const y of [0, this.plan.viewH || WALL_H]) for (const z of [0, D]) {
+      v.set(x, y, z).applyMatrix4(inv);
+      minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x); minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y);
+    }
+    return { minX, maxX, minY, maxY };
+  }
+
+  // Panning stops at the room's edges: a view edge never passes the room's
+  // edge, and a view larger than the room keeps the whole room in sight.
+  clampPan() {
+    const c = this.camera;
+    c.updateMatrixWorld();
+    const { minX, maxX, minY, maxY } = this.roomInView();
+    const hw = (c.right - c.left) / 2 / c.zoom, hh = (c.top - c.bottom) / 2 / c.zoom;
+    const keep = (lo, hi, h) => THREE.MathUtils.clamp(0, Math.min(lo + h, hi - h), Math.max(lo + h, hi - h));
+    const dx = keep(minX, maxX, hw), dy = keep(minY, maxY, hh);
+    if (dx || dy) this.panBy(dx, dy);
+  }
+
   resize() {
     super.resize();
     if (!this.gl) return;
@@ -632,6 +630,110 @@ export class Office3D extends window.Office {
     a = { obj, mixer, actions, current: null, head, headRest: head ? head.rotation.x : 0, armR, prop, cup, book, phone, yaw: 0, last: { x: p.x, y: p.y } };
     this.actors.set(p.key, a);
     return a;
+  }
+
+  // A whiteboard's texture, painted from the same canvas as the 2D wall;
+  // the frame loop re-uploads it whenever the board is redrawn.
+  boardTexture(kind) {
+    this.renderBoards();
+    const tex = new THREE.CanvasTexture(this.boards[kind].canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    tex.userData.v = this.boards[kind].version;
+    this.boardTex[kind] = tex;
+    return tex;
+  }
+
+  // Soft round sprites for the fridge's cold puffs, placed every frame from fridgeSmoke().
+  fridgeSmoke3D(x, y) {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 64;
+    const c = cv.getContext('2d');
+    const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = g; c.fillRect(0, 0, 64, 64);
+    const tex = new THREE.CanvasTexture(cv);
+    const sprites = [];
+    for (let i = 0; i < 10; i++) {
+      // Each sprite owns its material (opacity differs) and shares the texture.
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xd6e4f0, transparent: true, depthWrite: false }));
+      s.visible = false;
+      // Seat heights are found by raycasting the room; a sprite's raycast needs a camera.
+      s.raycast = () => {};
+      this.room.add(s);
+      sprites.push(s);
+    }
+    this.smoke = { x, y, sprites };
+  }
+
+  // The boss: a male model with a plump torso, his head swapped for a bald
+  // one (the model's hair is part of its head mesh).
+  bossActor() {
+    if (this.boss3d) return this.boss3d;
+    const gltf = this.chars[CHARACTERS.indexOf('male-b')];
+    const obj = cloneSkinned(gltf.scene);
+    obj.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    const box = new THREE.Box3().setFromObject(obj);
+    obj.scale.setScalar(CHAR_HEIGHT * 1.05 / (box.max.y - box.min.y));
+    obj.updateMatrixWorld(true);
+    const bone = {};
+    let headMesh = null;
+    obj.traverse((o) => { if (['torso', 'head', 'arm-left', 'arm-right'].includes(o.name)) bone[o.name] = o; if (o.name === 'head-mesh') headMesh = o; });
+    const hb = new THREE.Box3().setFromObject(headMesh);
+    headMesh.visible = false;
+    const size = hb.getSize(new THREE.Vector3());
+    const k = bone.head.getWorldScale(new THREE.Vector3()).x;
+    const r = Math.min(size.x, size.z) * 0.42 / k;
+    const skull = new THREE.Group();
+    skull.position.copy(bone.head.worldToLocal(hb.getCenter(new THREE.Vector3()))).add(new THREE.Vector3(0, -size.y * 0.12 / k, 0));
+    const mat = (color, rough = 0.6) => new THREE.MeshStandardMaterial({ color, roughness: rough });
+    const head = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 18), mat(0xe8b994, 0.35));
+    head.scale.set(1, 1.05, 1);
+    const fringe = new THREE.Mesh(new THREE.TorusGeometry(r * 0.93, r * 0.16, 8, 24, Math.PI * 1.3), mat(0x8f8a84, 0.9));
+    fringe.rotation.set(Math.PI / 2, 0, Math.PI * 1.35);
+    fringe.position.y = -r * 0.05;
+    const eye = (sx) => { const e = new THREE.Mesh(new THREE.SphereGeometry(r * 0.1, 8, 6), mat(0x2a2420)); e.position.set(sx * r * 0.35, r * 0.1, r * 0.92); return e; };
+    const tache = new THREE.Mesh(new THREE.BoxGeometry(r * 0.8, r * 0.16, r * 0.15), mat(0x6b6560, 0.9));
+    tache.position.set(0, -r * 0.3, r * 0.95);
+    const ear = (sx) => { const e = new THREE.Mesh(new THREE.SphereGeometry(r * 0.2, 8, 6), mat(0xe0ad86)); e.position.set(sx * r, 0, 0); return e; };
+    skull.add(head, fringe, eye(-1), eye(1), tache, ear(-1), ear(1));
+    bone.head.add(skull);
+    this.scene.add(obj);
+    const mixer = new THREE.AnimationMixer(obj);
+    const actions = {};
+    for (const clip of gltf.animations) actions[clip.name] = mixer.clipAction(clip);
+    this.boss3d = { obj, mixer, actions, current: null, bone, yaw: 0, last: { x: this.boss.x, y: this.boss.y } };
+    return this.boss3d;
+  }
+
+  syncBoss(dt) {
+    const b = this.boss, a = this.bossActor();
+    const act = this.bossAct();
+    this.play(a, act === 'walk' ? 'walk' : act === 'stand' ? 'idle' : 'interact-right');
+    // The clips key every bone's scale and blend with the current pose while
+    // fading, so take last frame's widening off before the update and put it
+    // back after; the head and arms are shrunk back to keep their size.
+    const fat = (on) => {
+      a.bone.torso.scale[on ? 'multiply' : 'divide'](BOSS_FAT);
+      for (const k of ['head', 'arm-left', 'arm-right']) a.bone[k].scale[on ? 'divide' : 'multiply'](BOSS_FAT);
+    };
+    if (a.fat) fat(false);
+    a.mixer.update(dt);
+    fat(true);
+    a.fat = true;
+    const dx = b.x - a.last.x, dy = b.y - a.last.y;
+    let want = null;
+    if (act === 'erase' || act === 'write') want = this.boardSpot(b.task.board, 0).yaw;
+    else if (Math.hypot(dx, dy) > 0.001) want = Math.atan2(dx, dy);
+    if (want != null) {
+      let d = want - a.yaw;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      a.yaw += d * Math.min(1, dt * 10);
+    }
+    a.last = { x: b.x, y: b.y };
+    a.obj.rotation.y = a.yaw;
+    a.obj.position.set(b.x, 0, b.y);
   }
 
   // Clones share the model's geometry and materials; only the bone textures and the props are their own.
@@ -788,6 +890,8 @@ export class Office3D extends window.Office {
     // screens show who is working and on what
     const occupant = new Map();
     for (const p of this.people.values()) if (p.mode === 'work' && p.desk && !p.path.length) occupant.set(p.desk, p);
+    // The one at the hotline desk lights its screen like a worker does.
+    for (const p of this.people.values()) if (p.mode === 'booth' && p.spot === this.plan.booth[0] && !p.path.length) occupant.set(this.plan.solo, p);
     for (const [dk, scr] of this.screens) {
       const p = occupant.get(dk);
       const col = p ? STATUS_COLOR[p.s.status] : null;
@@ -805,10 +909,30 @@ export class Office3D extends window.Office {
     }
     if (this.arcadeScreen) this.arcadeScreen.material.emissive.setHSL((t * 0.05) % 1, 0.7, 0.5);
     if (this.tvScreen) this.tvScreen.material.emissive.setHSL((t / 30) % 1, 0.55, 0.28);
+    if (this.tvPicture) {
+      const tvp = this.tvPlayer;
+      tvp.tick(performance.now());
+      this.tvPicture.visible = tvp.ready;
+      if (tvp.ready && tvp.version !== this.tvVersion) { this.tvVersion = tvp.version; this.tvTex.needsUpdate = true; }
+    }
 
     this.syncActors(dt);
+    this.syncBoss(dt);
+    for (const [k, tex] of Object.entries(this.boardTex || {})) {
+      if (tex.userData.v !== this.boards[k].version) { tex.userData.v = this.boards[k].version; tex.needsUpdate = true; }
+    }
+    if (this.smoke) {
+      const f = this.fridgePuff();
+      const puffs = f == null ? [] : this.fridgeSmoke(this.smoke.x, this.smoke.y, f);
+      this.smoke.sprites.forEach((s, i) => {
+        const q = puffs[i];
+        s.visible = !!q;
+        if (q) { s.position.set(q[0], q[2], q[1]); s.scale.setScalar(q[3] * 2); s.material.opacity = q[4]; }
+      });
+    }
     this.panByKeys(dt);
     this.controls.update();
+    this.clampPan();
     this.gl.render(this.scene, this.camera);
 
     // overlay: bubbles + name tags, reusing the 2D drawing code

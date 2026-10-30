@@ -192,12 +192,36 @@
   .office-loader .spin { width: 26px; height: 26px; border: 3px solid var(--line); border-top-color: var(--tool); border-radius: 50%; animation: spin .8s linear infinite; }
   .office-gl, .office-overlay { position: absolute; inset: 0; }
   .office-overlay { touch-action: none; }
+  /* The office eats wheel events for panning; leave a strip on the right where the wheel scrolls the page. */
+  body:not(.pip) .office { margin-right: clamp(32px, 5vw, 64px); }
+  .office-resize { height: 14px; margin-bottom: -10px; display: flex; align-items: center; justify-content: center; cursor: ns-resize; touch-action: none; }
+  .office-resize::before { content: ''; width: 56px; height: 4px; border-radius: 2px; background: var(--line); }
+  .office-resize:hover::before, .office-resize:focus-visible::before, .office-resize.dragging::before { background: var(--muted); }
+  .office-resize:focus-visible { outline: none; }
+  body.pip .office-resize { display: none; }
   .tip { position: fixed; z-index: 10; width: 320px; max-width: calc(100vw - 24px); pointer-events: none; display: none; }
   .tip.pinned { pointer-events: auto; }
   .tip .card { box-shadow: 0 8px 30px rgba(0,0,0,.18); }
   .card.zone { gap: 6px; }
   .card.zone .zone-title { font-weight: 650; }
   .card.zone p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  /* Detail dialog: one session in full, opened from the office or the list. */
+  .more { margin-left: auto; border: 0; background: none; color: var(--tool); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; padding: 0; flex: none; }
+  .more:hover { color: var(--ink); }
+  .foot .more ~ .copy, .foot .more ~ .open { margin-left: 0; }
+  .detail { width: min(760px, calc(100vw - 24px)); max-width: none; max-height: calc(100dvh - 24px); padding: 0; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); color: var(--ink); box-shadow: 0 20px 60px rgba(0,0,0,.28); }
+  .detail[open] { display: flex; flex-direction: column; }
+  .detail::backdrop { background: rgba(0,0,0,.5); }
+  .d-body { overflow: auto; min-height: 0; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .detail .card .q, .detail .card .r { display: none; }
+  .d-sec h3 { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .d-text { margin: 0; max-height: 45vh; overflow: auto; padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; font: inherit; font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .d-text.none { color: var(--faint); }
+  .d-actions { display: flex; justify-content: flex-end; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 16px; border-top: 1px solid var(--line); }
+  /* The card's actions move down to real buttons beside Close. */
+  .detail .card .foot > :not(.model) { display: none; }
+  .d-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-right: auto; }
+  a.btn { display: inline-block; text-decoration: none; }
   .legends { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 32px; margin-top: 10px; }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: 12px; }
   .legend span { display: inline-flex; align-items: center; gap: 5px; }
@@ -310,6 +334,7 @@
   </div>
   <div id="officeWrap">
     <div class="office loading" id="office"><div class="office-loader"><div class="spin"></div><span id="loaderText"></span></div></div>
+    <div class="office-resize" id="officeResize" role="separator" aria-orientation="horizontal" tabindex="0"></div>
     <div class="legends">
       <div class="legend" id="legend"></div>
       <div class="legend" id="agentLegend"></div>
@@ -319,6 +344,15 @@
 </div>
 <div class="conn" id="conn" data-t="disconnected"></div>
 <div class="tip" id="tip"></div>
+<dialog class="detail" id="detail">
+  <div class="d-body">
+    <div id="dCard"></div>
+    <div class="d-sec"><h3 data-t="detailPrompt"></h3><pre class="d-text" id="dPrompt"></pre></div>
+    <div class="d-sec"><h3 id="dReplyLabel"></h3><pre class="d-text" id="dReply"></pre></div>
+    <div id="dMeta"></div>
+  </div>
+  <form class="d-actions" method="dialog"><div class="d-acts" id="dActs"></div><button class="btn" data-t="close" autofocus></button></form>
+</dialog>
 <div class="ver"><span id="ver"></span><time id="clock"></time></div>
 <script src="/i18n.js"></script>
 <script src="/office.js"></script>
@@ -353,6 +387,8 @@ function applyLang(code) {
     + ALERT_KEYS.map(([k, label]) => `<span class="alert-key"><span class="alert-chip">${esc(OFFICE_ALERT_TEXT(k))}</span> ${L[label]}</span>`).join('');
   const sel = document.getElementById('langSel');
   if (sel) sel.options[0].textContent = `🌐 ${L.auto}`;
+  const resizeBar = document.getElementById('officeResize');
+  if (resizeBar) resizeBar.title = resizeBar.ariaLabel = L.resizeOffice;
   if (typeof office !== 'undefined' && office) office.offDutyLabel = L.wentHome;
   if (typeof syncControls === 'function') syncControls();
   if (typeof renderVersion === 'function') renderVersion();
@@ -486,13 +522,13 @@ function resumeCmd(s) {
 // session's tab if it is open, otherwise resumes it. Codex: opens the sidebar
 // and navigates its webview to the local thread. Only sessions started from
 // VS Code have a tab to go to.
-function vscodeLink(s) {
+function vscodeLink(s, cls = 'open') {
   if (s.platform !== 'vscode' || s.subagent) return '';
   let href = '';
   if (s.agent === 'claude') href = `vscode://anthropic.claude-code/open?session=${encodeURIComponent(s.id)}`;
   else if (s.agent === 'codex') href = `vscode://openai.chatgpt/local/${encodeURIComponent(s.id)}`;
   if (!href) return '';
-  return `<a class="open" href="${href}">${L.openVscode}</a>`;
+  return `<a class="${cls}" href="${href}">${L.openVscode}</a>`;
 }
 
 function agentLogo(agent) {
@@ -548,7 +584,7 @@ function card(s, now, detail = false) {
     <div class="status"><span class="ind"><i></i><i></i><i></i></span><span class="lbl">${esc(L[s.status] || s.status)}</span>${act}</div>
     ${err}${q}${r}
     ${detail ? meta(s, now) : ''}
-    <div class="foot"><span class="model">${esc((s.model || '') + sub)}</span><button class="copy" data-copy="${esc(resumeCmd(s))}">${L.copy}</button>${s.title ? `<button class="copy" data-copy="${esc(s.title)}">${L.copyTitle}</button>` : ''}${vscodeLink(s)}</div>
+    <div class="foot"><span class="model">${esc((s.model || '') + sub)}</span><button class="more" data-detail="${esc(s.key)}">${L.detail}</button><button class="copy" data-copy="${esc(resumeCmd(s))}">${L.copy}</button>${s.title ? `<button class="copy" data-copy="${esc(s.title)}">${L.copyTitle}</button>` : ''}${vscodeLink(s)}</div>
   </div>`;
 }
 
@@ -616,6 +652,7 @@ function render() {
 
 function tickTimes() {
   if (tipKey) refreshTip();
+  if (detailKey) refreshDetail();
   const now = Date.now() - state.skew;
   const byKey = new Map(state.data.sessions.map((s) => [s.key, s]));
   document.querySelectorAll('[data-time]').forEach((el) => {
@@ -643,6 +680,7 @@ function onData(data) {
   state.loaded = true;
   applyLang(chooseLang(data.lang));
   render();
+  refreshDetail();
 }
 
 function connect() {
@@ -834,6 +872,102 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideTip();
 document.getElementById('refreshOffice').addEventListener('click', () => {
   hideTip(); officeKind = null; makeOffice();
 });
+
+// ---- office height: drag the bar under the office (or use the arrow keys) to
+// trade office for list; double-click goes back to the CSS default. The
+// renderers follow through their ResizeObserver. Main page only.
+{
+  const box = document.getElementById('office');
+  const bar = document.getElementById('officeResize');
+  const MIN = 200;
+  const clamp = (h) => Math.round(Math.min(Math.max(MIN, innerHeight - 80), Math.max(MIN, h)));
+  const apply = (h) => {
+    box.style.height = h == null ? '' : `${clamp(h)}px`;
+    box.style.minHeight = h == null ? '' : `${MIN}px`;
+  };
+  const save = () => store.set('officeHeight', box.style.height ? parseInt(box.style.height, 10) : null);
+  const saved = store.get('officeHeight', null);
+  if (!PIP && Number.isFinite(saved)) apply(saved);
+  let drag = null;
+  bar.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault(); hideTip();
+    drag = { y: e.clientY, h: box.getBoundingClientRect().height };
+    bar.setPointerCapture(e.pointerId); bar.classList.add('dragging');
+  });
+  bar.addEventListener('pointermove', (e) => { if (drag) apply(drag.h + e.clientY - drag.y); });
+  const end = () => { if (!drag) return; drag = null; bar.classList.remove('dragging'); save(); };
+  bar.addEventListener('pointerup', end);
+  bar.addEventListener('pointercancel', end);
+  bar.addEventListener('dblclick', () => { apply(null); save(); });
+  bar.addEventListener('keydown', (e) => {
+    const step = e.key === 'ArrowUp' ? -40 : e.key === 'ArrowDown' ? 40 : 0;
+    if (!step) return;
+    e.preventDefault(); apply(box.getBoundingClientRect().height + step); save();
+  });
+}
+
+// ---- detail dialog: one session's whole last prompt and reply, whatever its
+// status, opened by the "Details" button on a list card or a pinned office card.
+// The snapshot only carries two-line previews, so the full text comes from
+// /api/session, fetched again whenever the session moves.
+const detailDlg = document.getElementById('detail');
+const dCard = document.getElementById('dCard'), dMeta = document.getElementById('dMeta');
+const dPrompt = document.getElementById('dPrompt'), dReply = document.getElementById('dReply');
+let detailKey = null, detailMark = null, detailSeq = 0;
+// Rewrite only what changed, so the clock ticking doesn't drop a text selection.
+const shownHTML = new WeakMap();
+function setHTML(el, html) { if (shownHTML.get(el) !== html) { shownHTML.set(el, html); el.innerHTML = html; } }
+function setText(el, text) {
+  el.classList.toggle('none', !text);
+  const t = text || L.detailEmpty;
+  if (el.textContent !== t) el.textContent = t;
+}
+function refreshDetail() {
+  if (!detailKey) return;
+  const s = state.data.sessions.find((x) => x.key === detailKey);
+  if (!s) return; // left the time window: keep what was last shown
+  const now = Date.now() - state.skew;
+  detailDlg.setAttribute('aria-label', s.project || AGENT_NAME[s.agent] || s.agent);
+  setHTML(dCard, card(s, now));
+  setHTML(dMeta, meta(s, now));
+  setHTML(document.getElementById('dActs'), detailActions(s));
+  document.getElementById('dReplyLabel').textContent = ACTIVE.has(s.status) ? L.detailReplySoFar : L.detailReply;
+  const mark = [s.status, s.lastEventAt, s.prompt, s.reply].join('\n');
+  if (mark === detailMark) return;
+  detailMark = mark;
+  const seq = ++detailSeq;
+  fetch('/api/session?key=' + encodeURIComponent(s.key))
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => { if (d && seq === detailSeq) { setText(dPrompt, d.prompt); setText(dReply, d.reply); } })
+    .catch(() => {});
+}
+function openDetail(key) {
+  const s = state.data.sessions.find((x) => x.key === key);
+  if (!s) return;
+  hideTip();
+  detailKey = key; detailMark = null;
+  // the previews until the full text arrives
+  setText(dPrompt, s.prompt); setText(dReply, s.reply);
+  refreshDetail();
+  if (!detailDlg.open) detailDlg.showModal();
+  dPrompt.scrollTop = dReply.scrollTop = detailDlg.querySelector('.d-body').scrollTop = 0;
+}
+detailDlg.addEventListener('close', () => { detailKey = null; detailSeq++; });
+// A click on the backdrop lands on the <dialog> itself.
+detailDlg.addEventListener('click', (e) => { if (e.target === detailDlg) detailDlg.close(); });
+// The "Details" button on list cards and on the pinned office card.
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-detail]');
+  if (b) openDetail(b.dataset.detail);
+});
+// What the list card offers, as buttons beside Close; type="button" so they
+// don't submit the dialog's form (which would close it).
+function detailActions(s) {
+  return `<button type="button" class="btn" data-copy="${esc(resumeCmd(s))}">${L.copy}</button>`
+    + (s.title ? `<button type="button" class="btn" data-copy="${esc(s.title)}">${L.copyTitle}</button>` : '')
+    + vscodeLink(s, 'btn');
+}
 
 // ---- version + one-click update
 const verEl = document.getElementById('ver');
