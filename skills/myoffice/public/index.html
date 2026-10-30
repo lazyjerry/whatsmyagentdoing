@@ -296,6 +296,7 @@
           </div>
         </div>
       </details>
+      <button class="btn" id="refreshOffice" data-t="refreshOffice"></button>
     </div>
     <button class="newver" id="newVer" hidden></button>
     <div class="summary" id="summary"></div>
@@ -387,6 +388,11 @@ function readPreferences() {
 }
 const PIP = new URLSearchParams(location.search).get('pip') === '1';
 if (PIP) document.body.classList.add('pip');
+// The main page shows the office with the list under it; only the small PiP
+// window still switches between the two.
+document.getElementById('viewSeg').hidden = !PIP;
+const showsOffice = () => !PIP || state.view === 'office';
+const showsList = () => !PIP || state.view === 'list';
 
 // ?view=office&quality=high&lang=zh-TW sets the prefs.
 {
@@ -525,7 +531,9 @@ function card(s, now, detail = false) {
   const act = s.activity ? `<span class="act" title="${esc(s.activity)}">${esc(s.activity)}</span>` : '';
   const showText = !s.subagent || ACTIVE.has(s.status);
   const q = showText && s.prompt ? `<div class="q" title="${esc(s.prompt)}">${esc(s.prompt)}</div>` : '';
-  const r = showText && s.reply && !ACTIVE.has(s.status) ? `<div class="r" title="${esc(s.reply)}">${esc(s.reply)}</div>` : '';
+  // The server clears the reply when a turn starts, so mid-turn it is what the
+  // agent has written so far; only the office card has room for it.
+  const r = showText && s.reply && (detail || !ACTIVE.has(s.status)) ? `<div class="r" title="${esc(s.reply)}">${esc(s.reply)}</div>` : '';
   const err = s.error ? `<div class="err">${esc(s.error)}</div>` : '';
   const sub = s.subagent ? ` · ${L.sub}` : '';
   return `
@@ -569,7 +577,7 @@ function render() {
   document.title = (needs ? `(${needs}!) ` : working ? `(${working}) ` : '') + L.title;
 
   const main = document.getElementById('main');
-  const officeMode = state.view === 'office';
+  const officeMode = showsOffice();
   document.getElementById('officeWrap').style.display = officeMode ? '' : 'none';
   // The office decides who sits at a desk and who wanders around; switched-off
   // status groups stay out of the room (and out of the off-duty count).
@@ -583,15 +591,15 @@ function render() {
     office.update(officeList);
   }
   if (poppedOut) {
+    // The office lives in the PiP window; the main page keeps only the list.
     document.getElementById('officeWrap').style.display = 'none';
-    main.innerHTML = `<div class="empty">${esc(L.pipOn)}</div>`;
     hideTip();
-    return;
-  }
-  if (officeMode) {
-    main.innerHTML = officeList.length ? '' : `<div class="empty">${esc(L.empty)}</div>`;
+  } else if (officeMode) {
     document.getElementById('officeWrap').style.display = officeList.length ? '' : 'none';
     refreshTip();
+  }
+  if (!showsList() || (officeMode && !poppedOut && !officeList.length)) {
+    main.innerHTML = officeList.length ? '' : `<div class="empty">${esc(L.empty)}</div>`;
     return;
   }
   const groups = PIP ? GROUPS.slice(0, 3) : GROUPS;
@@ -697,7 +705,8 @@ function syncControls() {
   document.querySelectorAll('#platformToggles input').forEach((c) => (c.checked = !state.hiddenPlatforms.includes(c.dataset.v)));
   document.querySelectorAll('#viewSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.view));
   document.querySelectorAll('#qualSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.quality));
-  document.getElementById('officeGroup').hidden = state.view !== 'office';
+  document.getElementById('officeGroup').hidden = !showsOffice();
+  document.getElementById('refreshOffice').hidden = !showsOffice();
   // Next to "Settings": what is still checked, for whichever of the two filters is narrowed.
   const checked = (names, hidden) => (hidden.length ? Object.keys(names).filter((k) => !hidden.includes(k)).map((k) => names[k]).join('/') || '–' : '');
   const activeFilter = document.getElementById('activeFilter');
@@ -707,9 +716,9 @@ function syncControls() {
   showSub.checked = state.showSub;
   showAgent.checked = state.showAgent;
   document.querySelectorAll('#statusToggles input[data-g]').forEach((c) => { const g = GROUPS.find((x) => x.key === c.dataset.g); c.checked = !!(g && state[g.show]); });
-  document.getElementById('agentBadgeToggle').style.display = state.view === 'office' ? '' : 'none';
+  document.getElementById('agentBadgeToggle').style.display = showsOffice() ? '' : 'none';
   document.getElementById('agentLegend').hidden = !state.showAgent;
-  popout?.sync(PIP, state.view);
+  popout?.sync(PIP, showsOffice() ? 'office' : 'list');
   if (!window.Notification) notifyBtn.style.display = 'none';
   else if (Notification.permission === 'granted') { notifyBtn.textContent = L.notifyOn; notifyBtn.disabled = true; }
 }
@@ -820,6 +829,11 @@ async function makeOffice() {
   setLoading(false);
 }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideTip(); });
+// Rebuilds only the office scene (camera, people, props); the page, the
+// session stream and the settings stay as they are.
+document.getElementById('refreshOffice').addEventListener('click', () => {
+  hideTip(); officeKind = null; makeOffice();
+});
 
 // ---- version + one-click update
 const verEl = document.getElementById('ver');
