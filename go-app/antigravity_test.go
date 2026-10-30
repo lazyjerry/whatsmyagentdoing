@@ -1,9 +1,11 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -132,5 +134,118 @@ func TestAgyHelpers(t *testing.T) {
 	}
 	if got := agyStatus(agyRow{Status: "CASCADE_RUN_STATUS_IDLE", StepCount: 3, NotFullyIdle: 1}); got != "thinking" {
 		t.Errorf("not fully idle: %q", got)
+	}
+}
+
+// agyLog writes a CLI log the way `agy -p` starts one; conv "" leaves the
+// conversation line out.
+func agyLog(t *testing.T, started time.Time, pid int, conv string) {
+	t.Helper()
+	body := "I1030 23:31:39.631904      27 server.go:1897] Starting language server process with pid " + strconv.Itoa(pid) + "\n"
+	if conv != "" {
+		body += "I1030 23:31:42.763408       1 session.go:201] Print mode: conversation=" + conv + ", sending message\n"
+	}
+	writeFile(t, filepath.Join(agyLogDir, "cli-"+started.Format("20060102_150405")+".log"), body)
+}
+
+// fakeAgyAlive stands in for ps: the pids in alive are agy processes, err
+// makes the lookup fail.
+func fakeAgyAlive(t *testing.T, alive map[int]bool, err *error) {
+	t.Helper()
+	old := agyAlive
+	agyAlive = func([]int) (map[int]bool, error) { return alive, *err }
+	t.Cleanup(func() { agyAlive = old })
+}
+
+func TestAgyPrintRunIsWorkingOnlyWhileItsProcessLives(t *testing.T) {
+	const conv = "78c9afda-69f7-4902-8a95-dd2da40c5499"
+	agyFixture(t, `insert into conversation_summaries values ('`+conv+`','','翻譯',2,'`+agyStamp(-time.Minute)+`','[]','CASCADE_RUN_STATUS_IDLE','CORTEX_TRAJECTORY_SOURCE_CLI','',0,0,0,'`+agyStamp(-2*time.Minute)+`');`)
+	agyLog(t, time.Now().Add(-2*time.Minute), 4242, conv)
+	alive := map[int]bool{4242: true}
+	var psErr error
+	fakeAgyAlive(t, alive, &psErr)
+
+	w := NewWatcher(24)
+	status := func() string {
+		for _, s := range w.Sessions() {
+			if s.ID == conv {
+				return s.Status
+			}
+		}
+		return "missing"
+	}
+	drain := func() {
+		for len(w.Changes()) > 0 {
+			<-w.Changes()
+		}
+	}
+
+	w.Tick()
+	if got := status(); got != "thinking" {
+		t.Fatalf("row of a running print process: %q", got)
+	}
+
+	// ps failing: not live this tick, but not written off either.
+	drain()
+	psErr = errors.New("ps: boom")
+	w.Tick()
+	if got := status(); got != "done" || len(w.Changes()) == 0 {
+		t.Fatalf("ps failure must fall back to the row's status: %q", got)
+	}
+	psErr = nil
+	w.Tick()
+	if got := status(); got != "thinking" {
+		t.Fatalf("after ps recovers: %q", got)
+	}
+
+	// Process gone: back to the row's status, and it stays there even if the
+	// pid shows up again (handed to a later process).
+	drain()
+	delete(alive, 4242)
+	w.Tick()
+	if got := status(); got != "done" || len(w.Changes()) == 0 {
+		t.Fatalf("after the process ended: %q", got)
+	}
+	alive[4242] = true
+	w.Tick()
+	if got := status(); got != "done" {
+		t.Fatalf("a dead run must not come back: %q", got)
+	}
+}
+
+func TestAgyRunLogsThatNeverNameAConversationAreDropped(t *testing.T) {
+	setLogDirs(t)
+	agyLog(t, time.Now().Add(-5*time.Minute), 7, "")
+	agyLog(t, time.Now().Add(-10*time.Second), 8, "")
+	calls := 0
+	old := agyAlive
+	agyAlive = func([]int) (map[int]bool, error) { calls++; return map[int]bool{7: true, 8: true}, nil }
+	t.Cleanup(func() { agyAlive = old })
+
+	a := newAgyRuns()
+	a.load(time.Now().UnixMilli(), time.Now().Add(-24*time.Hour).UnixMilli())
+	if len(a.live) != 0 || calls != 0 {
+		t.Fatalf("no conversation, no live run and no ps: live=%v calls=%d", a.live, calls)
+	}
+	var stale, fresh *agyRun
+	for _, r := range a.logs {
+		if r.pid == 7 {
+			stale = r
+		} else {
+			fresh = r
+		}
+	}
+	if stale == nil || !stale.dead || fresh == nil || fresh.dead {
+		t.Fatalf("past the wait the log is given up, before it is kept: stale=%+v fresh=%+v", stale, fresh)
+	}
+}
+
+func TestAgyLogStart(t *testing.T) {
+	want := time.Date(2026, 10, 30, 23, 31, 39, 0, time.Local).UnixMilli()
+	if got := agyLogStart("cli-20261030_233139.log"); got != want {
+		t.Errorf("agyLogStart = %d, want %d", got, want)
+	}
+	if agyLogStart("hub.log") != 0 || agyLogStart("cli-nope.log") != 0 {
+		t.Error("other names must parse to 0")
 	}
 }

@@ -70,5 +70,5 @@ description: 開啟一個即時的「辦公室」畫面，顯示這台機器上�
   在做什麼時使用：執行 `"<base directory>/bin/whatsmyagentdoing" --json --hours 2`，
   再依狀態摘要說明。
 
-所有資料都從本機的 `~/.claude/projects`、`~/.codex/sessions`、`~/.gemini/tmp`、`~/.gemini/antigravity/conversation_summaries.db` 與 `~/.local/share/opencode/opencode.db` 讀取；
+所有資料都從本機的 `~/.claude/projects`、`~/.codex/sessions`、`~/.gemini/tmp`、`~/.gemini/antigravity/conversation_summaries.db`、`~/.gemini/antigravity-cli/log` 與 `~/.local/share/opencode/opencode.db` 讀取；
 伺服器只監聽 127.0.0.1，不會把任何資料送到外部。

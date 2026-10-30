@@ -143,6 +143,9 @@ func setLogDirs(t *testing.T) (claude, codex, gemini string) {
 	t.Cleanup(func() {
 		claudeDir, codexDir, codexIndex, geminiHomes, geminiDir, agyDB, ocDB = oldClaude, oldCodexDir, oldCodexIndex, oldGemini, oldGeminiDir, oldAgy, oldOC
 	})
+	oldAgyLogs := agyLogDir
+	agyLogDir = filepath.Join(gemini, "antigravity-cli", "log")
+	t.Cleanup(func() { agyLogDir = oldAgyLogs })
 	oldSettings, oldConfig := claudeSettings, codexConfig
 	claudeSettings = filepath.Join(base, "claude", "settings.json")
 	codexConfig = filepath.Join(codex, "config.toml")

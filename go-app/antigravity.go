@@ -10,8 +10,15 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
+	"maps"
 	"net/url"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -124,4 +131,157 @@ func agySession(r agyRow) *Session {
 	s.TurnStartedAt = agyTime(r.LastUserInput)
 	s.Status = agyStatus(r)
 	return s
+}
+
+// --- Live print runs (`agy -p`)
+//
+// A CLI run's row says IDLE from its first write to its last, so the only
+// "still working" signal is the process itself. Each run writes its own log
+// under ~/.gemini/antigravity-cli/log: the first line names the pid and, a few
+// seconds in, a print run names its conversation. That conversation counts as
+// working while the pid is alive and still an agy process. The live set is
+// rebuilt every tick and nothing is latched, so a run that ends (or is killed)
+// falls back to its row's own status on the next tick.
+
+var agyLogDir = filepath.Join(geminiHomes[0], "antigravity-cli", "log")
+
+const (
+	agyLogHead  = 1 << 20         // the pid and conversation lines sit near the top
+	agyConvWait = 2 * time.Minute // a log that hasn't named a conversation by now never will
+)
+
+var (
+	reAgyPid  = regexp.MustCompile(`language server process with pid (\d+)`)
+	reAgyConv = regexp.MustCompile(`Print mode: conversation=([0-9a-f-]{36})`)
+)
+
+// agyRun is what one CLI log has said so far.
+type agyRun struct {
+	start int64 // from the file name; the newest log wins when a pid repeats
+	size  int64 // bytes seen at the last read
+	pid   int
+	conv  string
+	dead  bool // process gone, or the log gave up on naming a conversation
+}
+
+// agyRuns follows the CLI logs and knows which conversations are running.
+type agyRuns struct {
+	dirMtime int64
+	logs     map[string]*agyRun // log path -> what it said
+	live     map[string]bool    // conversation id -> its process is running
+}
+
+func newAgyRuns() *agyRuns {
+	return &agyRuns{logs: map[string]*agyRun{}, live: map[string]bool{}}
+}
+
+// agyLogStart parses the start time out of "cli-20261030_233139.log".
+func agyLogStart(name string) int64 {
+	stamp, ok := strings.CutPrefix(name, "cli-")
+	stamp, ok2 := strings.CutSuffix(stamp, ".log")
+	if !ok || !ok2 {
+		return 0
+	}
+	t, err := time.ParseInLocation("20060102_150405", stamp, time.Local)
+	if err != nil {
+		return 0
+	}
+	return t.UnixMilli()
+}
+
+// read picks the pid and conversation out of a log that grew since last time.
+func (r *agyRun) read(path string, now int64) {
+	if st := statSafe(path); st != nil && st.Size() != r.size {
+		r.size = st.Size()
+		if f, err := os.Open(path); err == nil {
+			head, _ := io.ReadAll(io.LimitReader(f, agyLogHead))
+			f.Close()
+			if m := reAgyPid.FindSubmatch(head); m != nil {
+				r.pid, _ = strconv.Atoi(string(m[1]))
+			}
+			if m := reAgyConv.FindSubmatch(head); m != nil && r.pid > 0 {
+				r.conv = string(m[1])
+			}
+		}
+	}
+	if r.conv == "" && now-r.start > agyConvWait.Milliseconds() {
+		r.dead = true
+	}
+}
+
+// load refreshes the live set; returns true when it changed.
+func (a *agyRuns) load(now, since int64) bool {
+	if st := statSafe(agyLogDir); st != nil && mtimeMs(st) != a.dirMtime {
+		a.dirMtime = mtimeMs(st)
+		entries, _ := os.ReadDir(agyLogDir)
+		for _, e := range entries {
+			path := filepath.Join(agyLogDir, e.Name())
+			if start := agyLogStart(e.Name()); start >= since && a.logs[path] == nil {
+				a.logs[path] = &agyRun{start: start}
+			}
+		}
+	}
+	newest := map[int]*agyRun{}
+	for path, r := range a.logs {
+		if r.start < since {
+			delete(a.logs, path)
+			continue
+		}
+		if r.conv == "" && !r.dead {
+			r.read(path, now)
+		}
+		if r.conv == "" || r.dead {
+			continue
+		}
+		if n := newest[r.pid]; n == nil || r.start > n.start {
+			newest[r.pid] = r
+		}
+	}
+	live := map[string]bool{}
+	if len(newest) > 0 {
+		pids := make([]int, 0, len(newest))
+		for pid := range newest {
+			pids = append(pids, pid)
+		}
+		// ps failing says nothing about the runs: none counts as live this
+		// tick, none is written off.
+		if alive, err := agyAlive(pids); err == nil {
+			for pid, r := range newest {
+				if alive[pid] {
+					live[r.conv] = true
+				} else {
+					r.dead = true
+				}
+			}
+		}
+	}
+	changed := !maps.Equal(live, a.live)
+	a.live = live
+	return changed
+}
+
+// agyAlive reports which pids are still agy processes; a pid handed to some
+// other program after the run ended doesn't count. Overridable in tests.
+var agyAlive = func(pids []int) (map[int]bool, error) {
+	list := make([]string, len(pids))
+	for i, pid := range pids {
+		list[i] = strconv.Itoa(pid)
+	}
+	out, err := exec.Command("ps", "-o", "pid=,comm=", "-p", strings.Join(list, ",")).Output()
+	// Some ps builds exit 1 when a listed pid is gone; what they print stands.
+	var exit *exec.ExitError
+	if err != nil && !errors.As(err, &exit) {
+		return nil, err
+	}
+	alive := map[int]bool{}
+	for _, line := range strings.Split(string(out), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 2 || filepath.Base(strings.Join(f[1:], " ")) != "agy" {
+			continue
+		}
+		if pid, err := strconv.Atoi(f[0]); err == nil {
+			alive[pid] = true
+		}
+	}
+	return alive, nil
 }

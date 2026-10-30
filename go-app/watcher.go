@@ -237,6 +237,7 @@ type Watcher struct {
 	geminiRegistryMtime int64
 	codexIndexMtime     int64
 	agy                 *dbSource // Antigravity rows (see antigravity.go)
+	agyRuns             *agyRuns  // `agy -p` processes still running (see antigravity.go)
 	oc                  *dbSource // OpenCode rows (see opencode.go)
 	lastScan            int64
 	candidates          []candidate
@@ -255,6 +256,7 @@ func NewWatcher(hours float64) *Watcher {
 		codexNames:     map[string]string{},
 		geminiProjects: map[string]string{},
 		agy:            newDBSource("antigravity", "Antigravity", func() string { return agyDB }, agyRead),
+		agyRuns:        newAgyRuns(),
 		oc:             newDBSource("opencode", "OpenCode", func() string { return ocDB }, ocRead),
 		changes:        make(chan struct{}, 1),
 		stop:           make(chan struct{}),
@@ -435,6 +437,9 @@ func (w *Watcher) Tick() {
 		changed = true
 	}
 	if w.agy.load(now, since) {
+		changed = true
+	}
+	if w.agyRuns.load(now, since) {
 		changed = true
 	}
 	if w.oc.load(now, since) {
@@ -652,7 +657,11 @@ func (w *Watcher) Sessions() []Session {
 		out = append(out, *s)
 	}
 	for _, s := range w.agy.sessions {
-		out = append(out, *s)
+		c := *s
+		if w.agyRuns.live[c.ID] {
+			c.Status = "thinking"
+		}
+		out = append(out, c)
 	}
 	for _, s := range w.oc.sessions {
 		out = append(out, *s)
