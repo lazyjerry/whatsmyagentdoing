@@ -35,6 +35,7 @@ var mimeTypes = map[string]string{
 	".js":  "text/javascript; charset=utf-8",
 	".glb": "model/gltf-binary",
 	".png": "image/png",
+	".gif": "image/gif",
 }
 
 var (
@@ -58,6 +59,7 @@ type Options struct {
 	Demo    bool
 	Stop    bool
 	Update  bool
+	TVDir   string
 }
 
 // View is one session as the page sees it. Pointers render as null when unset.
@@ -268,6 +270,30 @@ func snapshot(src Source, opts Options) Snapshot {
 	return snap
 }
 
+// Detail is one session's whole last prompt and reply, fetched by the detail
+// dialog on open and whenever the session moves; the snapshot only carries
+// the two-line previews.
+type Detail struct {
+	Key    string  `json:"key"`
+	Prompt *string `json:"prompt"`
+	Reply  *string `json:"reply"`
+}
+
+func sessionDetail(src Source, key string, privacy bool) (Detail, bool) {
+	for _, s := range src.Sessions() {
+		if s.Agent+":"+s.ID != key {
+			continue
+		}
+		d := Detail{Key: key}
+		if !privacy {
+			d.Prompt = nstr(firstNonEmpty(s.FullPrompt, s.Prompt))
+			d.Reply = nstr(firstNonEmpty(s.FullReply, s.Reply))
+		}
+		return d, true
+	}
+	return Detail{}, false
+}
+
 type Server struct {
 	src      Source
 	opts     Options
@@ -417,6 +443,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case p == "/api/sessions":
 		writeJSON(w, 200, snapshot(s.src, s.opts), false)
 
+	case p == "/api/session":
+		d, ok := sessionDetail(s.src, q.Get("key"), s.opts.Privacy)
+		if !ok {
+			w.WriteHeader(404)
+			return
+		}
+		writeJSON(w, 200, d, true)
+
 	case p == "/api/shutdown" && r.Method == "POST":
 		// Only our CLI sends this header; a web page can't add a custom header
 		// to a cross-site request without a CORS preflight, which we never allow.
@@ -464,6 +498,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	case p == "/events":
 		s.serveEvents(w, r)
+
+	case p == "/api/tv":
+		writeJSON(w, 200, map[string]any{"clips": s.tvClips()}, true)
+
+	case strings.HasPrefix(p, "/api/tv/"):
+		s.serveTV(w, r, strings.TrimPrefix(p, "/api/tv/"))
 
 	default:
 		w.WriteHeader(404)

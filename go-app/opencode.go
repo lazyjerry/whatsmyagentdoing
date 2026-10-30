@@ -198,11 +198,13 @@ func ocSession(r ocRow) *Session {
 	s.Mtime = s.LastEventAt
 	if p := ocJSON(r.PromptPart); p != nil {
 		s.Prompt = clean(str(p, "text"), 220)
+		s.FullPrompt = cleanFull(str(p, "text"))
 	}
 	msg := ocJSON(r.LastMsg)
 	if str(msg, "role") == "assistant" {
 		if p := ocJSON(r.ReplyPart); p != nil {
 			s.Reply = clean(str(p, "text"), 220)
+			s.FullReply = cleanFull(str(p, "text"))
 		}
 	}
 	ocStatus(s, msg, r.LastPart)

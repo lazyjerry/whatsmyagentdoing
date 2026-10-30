@@ -488,3 +488,30 @@ func TestApiTimeAndServiceWorker(t *testing.T) {
 		t.Errorf("sw.js: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}
 }
+
+func TestApiSessionDetail(t *testing.T) {
+	src := newFakeSource(
+		Session{Agent: "claude", ID: "a", Prompt: "p", FullPrompt: "p\nfull", Reply: "r"},
+		Session{Agent: "codex", ID: "b"},
+	)
+	s := newTestServer(t, src, Options{}, nil, nil)
+	rec := do(s, "GET", "/api/session?key=claude:a", nil)
+	var d Detail
+	if err := json.Unmarshal(rec.Body.Bytes(), &d); err != nil || rec.Code != 200 {
+		t.Fatalf("detail: %d %v %s", rec.Code, err, rec.Body.String())
+	}
+	// the full text when the parser kept one, else the preview
+	if d.Key != "claude:a" || *d.Prompt != "p\nfull" || *d.Reply != "r" {
+		t.Errorf("detail body: %s", rec.Body.String())
+	}
+	if rec = do(s, "GET", "/api/session?key=codex:b", nil); !strings.Contains(rec.Body.String(), `"prompt":null`) {
+		t.Errorf("empty session: %s", rec.Body.String())
+	}
+	if rec = do(s, "GET", "/api/session?key=claude:zz", nil); rec.Code != 404 {
+		t.Errorf("unknown key: %d", rec.Code)
+	}
+	priv := newTestServer(t, src, Options{Privacy: true}, nil, nil)
+	if rec = do(priv, "GET", "/api/session?key=claude:a", nil); !strings.Contains(rec.Body.String(), `"reply":null`) {
+		t.Errorf("private detail: %s", rec.Body.String())
+	}
+}

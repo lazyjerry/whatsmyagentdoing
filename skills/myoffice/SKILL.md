@@ -65,6 +65,8 @@ description: 開啟一個即時的「辦公室」畫面，顯示這台機器上�
 - `--private`：隱藏 prompt（提示詞）與回覆，只顯示狀態（適合螢幕分享時使用）
 - `--hours 4`：只顯示最近 4 小時內有活動的 session（預設 24 小時）
 - `--port 5000`：改用其他連接埠（預設 4545）
+- `--tv-dir <資料夾>`：沙發區電視輪播這個資料夾裡的 GIF（預設 `~/.whatsmyagentdoing/tv`；
+  沒有 GIF 時播內建的公有領域片段）
 - `--stop`：停止執行中的儀表板
 - `--json`：印出一次性的快照，不開啟網頁。當使用者在對話中詢問其他 agent
   在做什麼時使用：執行 `"<base directory>/bin/whatsmyagentdoing" --json --hours 2`，

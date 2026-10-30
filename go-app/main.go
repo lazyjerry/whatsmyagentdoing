@@ -34,6 +34,8 @@ Options:
   --demo            Show a made-up team instead of your sessions
   --stop            Stop a running dashboard
   --update          Update to the latest version (git pull + go build) and restart a running dashboard
+  --tv-dir <dir>    GIFs for the TV in the sofa corner, played in name order (default ~/%s;
+                    built-in public-domain clips while it has none)
   -h, --help        Show this help
 
 Reads (never writes):
@@ -41,7 +43,7 @@ Reads (never writes):
 Override with CLAUDE_CONFIG_DIR / CODEX_HOME / GEMINI_CLI_HOME.
 The page and its assets are built into this binary; --update needs it to sit
 in its go-app/ source folder or skills/myoffice/bin/ inside a git clone (or
-WMAD_SRC pointing there).`, version, DefaultWindowHours, describeDirs())
+WMAD_SRC pointing there).`, version, DefaultWindowHours, TVDir, describeDirs())
 }
 
 func parseArgs(argv []string, version string) Options {
@@ -92,6 +94,10 @@ func parseArgs(argv []string, version string) Options {
 			o.Stop = true
 		case a == "--update":
 			o.Update = true
+		case a == "--tv-dir":
+			o.TVDir = next(&i)
+		case strings.HasPrefix(a, "--tv-dir="):
+			o.TVDir = a[9:]
 		default:
 			fmt.Fprintf(os.Stderr, "Unknown option: %s\n\n%s\n", a, help)
 			os.Exit(1)

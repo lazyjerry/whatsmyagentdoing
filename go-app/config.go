@@ -72,3 +72,18 @@ const (
 	// 門檻 = log 裡的 model_context_window × 這個比例。
 	CodexCompactRatio = 0.9
 )
+
+// 詳細資訊視窗（卡片上的「詳細」按鈕開的那個）顯示的提示詞與回覆，各最多這麼多字；
+// SSE 快照裡的預覽另外固定 220 字。
+const FullTextMax = 20_000
+
+// 沙發區電視（tv.go 用）：資料夾裡的 .gif 依檔名順序輪播；資料夾沒有 GIF 時，
+// 改播執行檔內建的公有領域片段（skills/myoffice/assets/tv/）。
+const (
+	// 家目錄下的電視資料夾；--tv-dir 可改成別的資料夾。
+	TVDir = ".whatsmyagentdoing/tv"
+	// 超過這個大小的 GIF 不播（頁面要把整個檔案讀進來解碼）。
+	TVMaxBytes = 20 << 20
+	// 片單最多幾段。
+	TVMaxClips = 50
+)

@@ -56,6 +56,11 @@ type Session struct {
 	ContextTokens  int64 // context size of the latest request; 0 when unknown
 	ContextWindow  int64 // Codex's model_context_window
 	CompactAt      int64 // where the CLI compacts on its own; set by the watcher (compact.go)
+
+	// The whole prompt and reply, line breaks kept, for the detail dialog
+	// (/api/session); the snapshot only carries the previews above.
+	FullPrompt string
+	FullReply  string
 }
 
 var waitingTools = map[string]bool{"AskUserQuestion": true, "ExitPlanMode": true}
@@ -242,6 +247,22 @@ func clean(text string, max int) string {
 		return ""
 	}
 	return truncate(t, max)
+}
+
+// cleanFull drops what clean drops (injected context, command tags) but keeps
+// line breaks and Markdown: the detail dialog shows the text as written.
+func cleanFull(text string) string {
+	t := text
+	if marker := strings.LastIndex(t, "## My request:"); marker != -1 {
+		t = t[marker+len("## My request:"):]
+	}
+	for _, re := range reContextBlocks {
+		t = re.ReplaceAllString(t, "")
+	}
+	t = reCommandMessage.ReplaceAllString(t, "")
+	t = reCommandArgs.ReplaceAllString(t, "")
+	t = strings.TrimSpace(stripPairedTags(t))
+	return truncate(t, FullTextMax)
 }
 
 func short(s string, max int) string {
@@ -451,6 +472,10 @@ func applyClaude(s *Session, v any) {
 				s.Title = clean(text, 80)
 			}
 			s.Reply = ""
+			s.FullPrompt, s.FullReply = s.Prompt, ""
+			if cmd == nil {
+				s.FullPrompt = cleanFull(text)
+			}
 		}
 		switch {
 		case isNotification:
@@ -481,6 +506,7 @@ func applyClaude(s *Session, v any) {
 			case "text":
 				if r := clean(str(b, "text"), 220); r != "" {
 					s.Reply = r
+					s.FullReply = cleanFull(str(b, "text"))
 				}
 				stop := str(m, "stop_reason")
 				if stop == "end_turn" || stop == "stop_sequence" {
@@ -611,10 +637,12 @@ func applyCodex(s *Session, v any) {
 		case "task_started":
 			s.TurnStartedAt = ts
 			s.Reply = ""
+			s.FullReply = ""
 			setA(s, "thinking", "")
 		case "task_complete":
 			if m := str(p, "last_agent_message"); m != "" {
 				s.Reply = clean(m, 220)
+				s.FullReply = cleanFull(m)
 			}
 			setA(s, "done", "")
 		case "turn_aborted":
@@ -624,10 +652,12 @@ func applyCodex(s *Session, v any) {
 			s.Error = short(firstNonEmpty(str(p, "message"), "Error"), 120)
 		case "user_message":
 			s.Prompt = clean(str(p, "message"), 220)
+			s.FullPrompt = cleanFull(str(p, "message"))
 			setA(s, "thinking", "")
 		case "agent_message":
 			if r := clean(str(p, "message"), 220); r != "" {
 				s.Reply = r
+				s.FullReply = cleanFull(str(p, "message"))
 			}
 			setA(s, "typing", "")
 		case "token_count":
@@ -651,10 +681,12 @@ func applyCodex(s *Session, v any) {
 			case "UserMessage":
 				if t := clean(codexText(it["content"]), 220); t != "" {
 					s.Prompt = t
+					s.FullPrompt = cleanFull(codexText(it["content"]))
 				}
 			case "AgentMessage":
 				if r := clean(codexText(it["content"]), 220); r != "" {
 					s.Reply = r
+					s.FullReply = cleanFull(codexText(it["content"]))
 				}
 				setA(s, "typing", "")
 			case "Reasoning":
@@ -702,6 +734,7 @@ func applyCodex(s *Session, v any) {
 			if str(p, "role") == "assistant" {
 				if r := clean(codexText(p["content"]), 220); r != "" {
 					s.Reply = r
+					s.FullReply = cleanFull(codexText(p["content"]))
 				}
 				setA(s, "typing", "")
 			}
@@ -819,6 +852,7 @@ func applyGemini(s *Session, v any) {
 			s.PromptKind = ""
 		}
 		s.Reply = ""
+		s.FullPrompt, s.FullReply = cleanFull(geminiText(content)), ""
 		if ts := str(d, "timestamp"); ts != "" {
 			s.TurnStartedAt = parseTime(ts)
 		}
@@ -849,6 +883,7 @@ func applyGemini(s *Session, v any) {
 			setA(s, "thinking", "") // tools done, model continues
 		case text != "":
 			s.Reply = text
+			s.FullReply = cleanFull(geminiText(d["content"]))
 			setA(s, "typing", "")
 		default:
 			set(s, "thinking")

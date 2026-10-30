@@ -117,6 +117,7 @@ func agySession(r agyRow) *Session {
 	s.Workspace = s.Cwd
 	s.Title = strings.TrimSpace(r.Title)
 	s.Prompt = clean(r.Preview, 220)
+	s.FullPrompt = cleanFull(r.Preview)
 	if strings.Contains(strings.ToUpper(r.Source), "CLI") {
 		s.Platform = "cli"
 	} else {

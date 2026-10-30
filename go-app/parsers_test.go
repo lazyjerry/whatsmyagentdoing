@@ -630,3 +630,35 @@ func TestGeminiPromptKind(t *testing.T) {
 		t.Fatalf("plain text: %+v", s)
 	}
 }
+
+// --- Full text for the detail dialog
+
+func TestCleanFullKeepsLinesAndMarkdown(t *testing.T) {
+	in := "<system-reminder>secret</system-reminder>\nline **one**\n\n- item `x`\n"
+	if got := cleanFull(in); got != "line **one**\n\n- item `x`" {
+		t.Errorf("got %q", got)
+	}
+	if got := cleanFull("ctx\n## My request: do\nthis"); got != "do\nthis" {
+		t.Errorf("codex marker: got %q", got)
+	}
+	if got := cleanFull(strings.Repeat("a", FullTextMax+50)); len([]rune(got)) != FullTextMax {
+		t.Errorf("cap: %d runes", len([]rune(got)))
+	}
+}
+
+func TestApplyClaudeKeepsFullText(t *testing.T) {
+	long := strings.Repeat("word ", 100) + "\nend"
+	s := newSession("claude", "s1", "f")
+	applyClaude(s, parseJSON(t, jsonLine(t, claudeUser("Fix\nthe bug"))))
+	if s.FullPrompt != "Fix\nthe bug" || s.Prompt != "Fix the bug" {
+		t.Fatalf("prompt: %q / %q", s.FullPrompt, s.Prompt)
+	}
+	applyClaude(s, parseJSON(t, jsonLine(t, claudeText(long, "end_turn"))))
+	if s.FullReply != strings.TrimSpace(long) || len([]rune(s.Reply)) != 220 {
+		t.Fatalf("reply: %q / %q", s.FullReply, s.Reply)
+	}
+	applyClaude(s, parseJSON(t, jsonLine(t, claudeUser("Next"))))
+	if s.FullReply != "" || s.FullPrompt != "Next" {
+		t.Fatalf("new prompt must clear the full reply: %+v", s)
+	}
+}
