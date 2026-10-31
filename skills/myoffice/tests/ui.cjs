@@ -250,6 +250,8 @@ async function drawnLogos(target) {
   assert.deepEqual(await drawnLogos(page),['claude','codex','gemini','opencode']);
   assert.equal(await page.locator('#agentLegend img').evaluateAll(imgs=>imgs.length===4&&imgs.every(img=>img.complete&&img.naturalWidth>0)),true);
   check('all official local logos load and draw in 2D and the legend');
+  assert.deepEqual(await page.locator('#agentLegend [data-n]').allTextContents(),['1','','1','1']);
+  check('the agent legend counts only working sessions and leaves a zero blank');
   await openSettings(page);await page.check('#showSub');
   assert.equal((await badges(page)).length,6);
   check('2D badges identify all four providers and subagents without duplicate activity badges');

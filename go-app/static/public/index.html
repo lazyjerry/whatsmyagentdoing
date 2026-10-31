@@ -262,9 +262,10 @@
   .l-help::after { content: attr(data-tip); position: absolute; z-index: 1; left: -8px; top: calc(100% + 6px); width: max-content; max-width: min(260px, 60vw); padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font-size: 12px; font-weight: 400; line-height: 1.5; white-space: normal; box-shadow: var(--shadow); opacity: 0; pointer-events: none; transition: opacity .15s; }
   .l-help:hover::after, .l-help:focus-visible::after { opacity: 1; }
   .l-print { color: var(--ink); }
-  .legends { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 32px; margin-top: 10px; }
+  .legends { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: 12px; }
   .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 
   .pip-preview { margin-bottom: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
   .pip-preview p { margin: 0 0 10px; color: var(--muted); }
@@ -457,8 +458,8 @@ function applyLang(code) {
   document.querySelectorAll('[data-t]').forEach((el) => (el.textContent = L[el.dataset.t]));
   const legend = document.getElementById('legend');
   if (legend) legend.innerHTML = ['thinking', 'tool', 'typing', 'waiting', 'done', 'error']
-    .map((k) => `<span data-s="${k}"><span class="dot" style="color:var(--s)"></span>${L[k]}</span>`).join('')
-    + ALERT_KEYS.map(([k, label]) => `<span class="alert-key"><span class="alert-chip">${esc(OFFICE_ALERT_TEXT(k))}</span> ${L[label]}</span>`).join('');
+    .map((k) => `<span data-s="${k}"><span class="dot" style="color:var(--s)"></span>${L[k]}<b data-n="status:${k}"></b></span>`).join('')
+    + ALERT_KEYS.map(([k, label]) => `<span class="alert-key"><span class="alert-chip">${esc(OFFICE_ALERT_TEXT(k))}</span> ${L[label]}<b data-n="alert:${k}"></b></span>`).join('');
   const sel = document.getElementById('langSel');
   if (sel) sel.options[0].textContent = `🌐 ${L.auto}`;
   const resizeBar = document.getElementById('officeResize');
@@ -687,6 +688,15 @@ function render() {
     const on = !!state[g.show];
     return `<button class="chip" type="button" data-g="${g.key}" aria-pressed="${on}" title="${esc(L.showStatuses)}"><span class="dot" style="color:${g.color}"></span>${L[g.key]} <b>${n}</b></button>`;
   }).join('');
+
+  // The legend counts the same sessions as the header: per status, warning and agent.
+  // Agents count only working sessions and leave a zero blank.
+  const legendMatch = { status: (s, k) => s.status === k, alert: (s, k) => (s.alerts || []).includes(k), agent: (s, k) => s.agent === k && ACTIVE.has(s.status) };
+  document.querySelectorAll('.legends [data-n]').forEach((el) => {
+    const [kind, k] = el.dataset.n.split(':');
+    const n = all.filter((s) => legendMatch[kind](s, k)).length;
+    el.textContent = kind === 'agent' && !n ? '' : n;
+  });
 
   const working = count((s) => ACTIVE.has(s));
   const needs = count((s) => s === 'waiting' || s === 'error');
@@ -1343,7 +1353,7 @@ langSel.addEventListener('change', () => {
   render();
 });
 document.getElementById('agentLegend').innerHTML = Object.entries(OFFICE_AGENT_BADGES)
-  .map(([key, a]) => `<span>${agentLogo(key)}${a.label}</span>`).join('');
+  .map(([key, a]) => `<span>${agentLogo(key)}${a.label}<b data-n="agent:${key}"></b></span>`).join('');
 popout = new OfficePopout({
   preferences: () => ({ ...Object.fromEntries(Object.keys(PREF_DEFAULTS).map((k) => [k, state[k]])), lang: store.get('lang', 'auto') }),
   office: () => office,
