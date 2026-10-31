@@ -161,6 +161,22 @@ async function drawnLogos(target) {
   await page.waitForFunction(p=>office.boards.meet.page!==p,page0,{timeout:8000});
   assert.ok(await page.evaluate(()=>office.fridgePuff(0)===0&&office.fridgePuff(10000)===null&&office.fridgeSmoke(0,0,0.5).length>0));
   check('the boss rewrites both whiteboards each round, the meeting board turns pages and the fridge puffs');
+  // His routes (home to every desk's back, the door and both boards) keep clear of every chair and anyone not walking.
+  const clear=await page.evaluate(()=>{
+   const o=office,g=o.bossGrid(),from=o.bossHome(),seats=[...o.plan.desks,o.plan.solo].map(d=>d.seat);
+   const still=[...o.people.values()].filter(p=>!p.path.length);
+   const backs=[...o.plan.desks,o.plan.solo].map(d=>({x:d.seat.x,y:d.seat.y+(d.side==='n'?-0.7:0.7)}));
+   let min=9;
+   for(const t of [o.plan.door,o.boardSpot('sales',1),o.boardSpot('meet',1),...backs]){
+    const pts=[from,...g.path(from.x,from.y,t.x,t.y)];
+    for(let k=1;k<pts.length;k++){const a=pts[k-1],b=pts[k],n=Math.ceil(Math.hypot(b.x-a.x,b.y-a.y)/0.05);
+     for(let s=0;s<=n;s++){const x=a.x+(b.x-a.x)*s/n,y=a.y+(b.y-a.y)*s/n;
+      for(const q of [...seats,...still]) if(Math.hypot(q.x-t.x,q.y-t.y)>=0.75) min=Math.min(min,Math.hypot(q.x-x,q.y-y));}}
+   }
+   return {min,home:o.plan.grid.blocked(from.x,from.y),still:still.length};
+  });
+  assert.equal(clear.home,false);assert.ok(clear.still>=3);assert.ok(clear.min>=0.45,`closest pass ${clear.min}`);
+  check('the boss walks around chairs and people sitting or standing still');
   // Between rounds he talks to finished people in turn; with none of them he stands behind someone at a desk for 4–8 s.
   await page.waitForFunction(()=>office.bossAct()==='talk',{},{timeout:30000});
   assert.equal(await page.evaluate(()=>office.people.get(office.boss.task.visit).s.status),'done');

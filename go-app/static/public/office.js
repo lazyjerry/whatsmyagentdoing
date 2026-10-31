@@ -82,12 +82,14 @@
     c.fillStyle = col;
     c.font = `${w} ${px}px "Marker Felt", "Comic Sans MS", ui-sans-serif, system-ui, sans-serif`;
   };
-  const NOTES = ['SHIP IT', 'TESTS ✓', 'LGTM', 'BUG BASH', 'NO MTGS', 'DEPLOY?', 'v2 🚀', 'COFFEE ☕', 'PR #', 'OKR %'];
+  const NOTES = ['SHIP IT', 'TESTS ✓', 'LGTM', 'BUG BASH', 'NO MTGS', 'DEPLOY?', 'v2 🚀', 'COFFEE ☕', 'PR #', 'OKR %', 'KPI 🎯'];
+  const OBJECTIVES = ['Ship v2 on time', 'Delight users', 'Cut token costs', 'Zero sev-1s', 'Faster CI'];
+  const KEY_RESULTS = ['NPS 60+', 'p95 < 2s', 'Tests 90%', 'Tokens -30%', 'Uptime 99.9%', 'Docs 100%', 'CI < 5 min'];
   const TOPICS = ['Q4 roadmap', 'Fix flaky tests', 'Cut token costs', 'Ship v2?', 'Hire 2 devs', 'Pizza Friday',
     'Refactor auth', 'On-call rota', 'Kill legacy API', 'Docs sprint', 'Faster CI', 'Pricing page'];
 
   // The sales board, H = 384 px tall and as wide as the wall board: a title,
-  // then as many panels as fit (KPIs, bars, trend, leaderboard, pie), sticky notes last.
+  // then as many panels as fit (KPIs, OKRs, bars, trend, leaderboard, pie), sticky notes last.
   function drawSalesBoard(c, W, H, ed) {
     const r = seeded(ed);
     const int = (a, b) => Math.round(a + r() * (b - a));
@@ -102,9 +104,23 @@
         const up = int(-8, 140), churn = (r() * 6).toFixed(1);
         const rows = [['Revenue', `${up >= 0 ? '▲' : '▼'} ${Math.abs(up)}%`, up >= 0 ? '#2e8b57' : '#c0392b'], ['Deals won', String(int(120, 480)), '#1c1c1a'],
           ['MRR', `$${(20 + r() * 60).toFixed(1)}k`, '#1c1c1a'], ['Churn', `▼ ${churn}%`, '#c0392b'], ['Tokens', `${(2 + r() * 15).toFixed(1)}M`, '#6a4bc4']];
+        marker(c, '#1c1c1a', 26, 800); c.fillText('KPI', x, 112);
         rows.forEach(([k, v, col], i) => {
-          marker(c, '#3a3a38', 26, 600); c.fillText(k, x, 112 + i * 48);
-          marker(c, col, 30, 800); c.fillText(v, x + Math.min(178, w * 0.55), 112 + i * 48);
+          marker(c, '#3a3a38', 26, 600); c.fillText(k, x, 156 + i * 42);
+          marker(c, col, 30, 800); c.fillText(v, x + Math.min(178, w * 0.55), 156 + i * 42);
+        });
+      },
+      okr(x, w) {
+        const krs = KEY_RESULTS.slice().sort(() => r() - 0.5).slice(0, 3), bw = Math.max(60, w - 110);
+        marker(c, '#1c1c1a', 26, 800); c.fillText('OKR', x, 112);
+        marker(c, '#3a3a38', 22, 700); c.fillText(`O: ${OBJECTIVES[int(0, OBJECTIVES.length - 1)]}`, x, 150);
+        krs.forEach((k, i) => {
+          const y = 196 + i * 50, pct = int(15, 100);
+          marker(c, '#3a3a38', 20, 600); c.fillText(`KR${i + 1} ${k}`, x, y);
+          c.strokeStyle = '#3a3a38'; c.lineWidth = 2; c.strokeRect(x, y + 10, bw, 14);
+          c.fillStyle = pct >= 70 ? '#2e8b57' : pct >= 40 ? '#e2b03b' : '#c0392b';
+          c.fillRect(x + 2, y + 12, ((bw - 4) * pct) / 100, 10);
+          marker(c, '#1c1c1a', 20, 800); c.fillText(`${pct}%`, x + bw + 8, y + 24);
         });
       },
       bars(x, w) {
@@ -170,8 +186,8 @@
         });
       },
     };
-    const order = ['kpi', 'bars', 'trend', 'leader', 'pie'];
-    const n = Math.max(3, Math.min(6, Math.round((W - 40) / 330)));
+    const order = ['kpi', 'okr', 'bars', 'trend', 'leader', 'pie'];
+    const n = Math.max(3, Math.min(7, Math.round((W - 40) / 300)));
     const use = [...order.slice(0, n - 1), 'notes'];
     const pw = (W - 40) / use.length;
     use.forEach((k, i) => panels[k](28 + i * pw, pw));
@@ -182,6 +198,7 @@
   const MEET_PAGES = 4, MEET_PAGE_MS = 6000;
   const BOSS_EVERY = 60_000, BOSS_ERASE = 3500, BOSS_WRITE = 6000;
   const BOSS_VISIT_MIN = 4000, BOSS_VISIT_MAX = 8000, BOSS_SWITCH = 700; // ms: one visit between rounds, flipping the light switch
+  const BOSS_REPLAN = 500; // ms between route checks while he walks (people sit down and get up)
   const FRIDGE_PUFF_EVERY = 24, FRIDGE_PUFF_FOR = 4, FRIDGE_PUFFS = 10; // seconds, seconds, puffs
   function drawMeetingBoard(c, W, H, ed, page) {
     const r = seeded(ed * 7 + 3);
@@ -328,6 +345,7 @@
       this.cw = Math.ceil(W * res);
       this.ch = Math.ceil(D * res);
       this.cost = new Uint8Array(this.cw * this.ch);
+      this.hard = 25; // step cost through a blocked cell
     }
     block(x, y, w, d, pad = 0.12) {
       const R = this.res;
@@ -341,6 +359,10 @@
       const i = Math.floor(x * this.res), j = Math.floor(y * this.res);
       if (i < 0 || j < 0 || i >= this.cw || j >= this.ch) return true;
       return !!this.cost[j * this.cw + i];
+    }
+    // A copy to block more on, where blocked cells cost `hard` per step.
+    clone(hard) {
+      return Object.assign(Object.create(Grid.prototype), this, { cost: this.cost.slice(), hard });
     }
     path(ax, ay, bx, by) {
       const R = this.res, cw = this.cw, ch = this.ch;
@@ -375,7 +397,7 @@
       const hfn = (i, j) => { const dx = Math.abs(i - gi), dy = Math.abs(j - gj); return Math.max(dx, dy) + 0.41 * Math.min(dx, dy); };
       // Blocked cells are expensive, not impossible, so a path always exists
       // (someone standing right against furniture can still step away).
-      const stepCost = (n) => (this.cost[n] ? 25 : 1);
+      const stepCost = (n) => (this.cost[n] ? this.hard : 1);
       const start = sj * cw + si, goal = gj * cw + gi;
       g[start] = 0;
       push(hfn(si, sj), start);
@@ -1007,8 +1029,22 @@
       this.boards.meet.render(Math.round(256 * 2.6 / 1.15), 256);
     }
 
+    // In front of the server rack (not at the hotline desk, which stands there).
     bossHome() {
-      return { x: this.plan.OW - 0.6, y: 0.9 };
+      return { x: this.plan.OW - 2.0, y: 1.2 };
+    }
+
+    // The floor as the boss sees it: the furniture, plus every chair, stool
+    // and beanbag and everyone not walking, all firmly in his way (people
+    // may brush past each other, he walks around).
+    bossGrid() {
+      const { grid, desks, solo, props } = this.plan;
+      const g = grid.clone(400);
+      const spot = (x, y, r) => g.block(x - r, y - r, r * 2, r * 2, 0.1);
+      for (const dk of [...desks, solo]) spot(dk.seat.x, dk.seat.y, 0.3);
+      for (const q of props) if (q.t === 'chair' || q.t === 'barStool' || q.t === 'beanbag') spot(q.x, q.y, 0.25);
+      for (const p of this.people.values()) if (!p.path.length) spot(p.x, p.y, 0.2);
+      return g;
     }
 
     // Where the boss stands to reach point u (0 = left edge, 1 = right edge as
@@ -1054,7 +1090,7 @@
     // A free spot `dist` from (x, y), trying direction `yaw` first and then
     // turning further away from it; faces the boss toward `face` (a point) or along `yaw`.
     spotNear(x, y, yaw, dist, face) {
-      const { grid, W, D } = this.plan;
+      const { W, D } = this.plan, grid = this.bossGrid();
       for (const turn of [0, 0.8, -0.8, 1.6, -1.6, 2.4, -2.4, Math.PI]) {
         const a = yaw + turn;
         const sx = x + Math.sin(a) * dist, sy = y + Math.cos(a) * dist;
@@ -1126,10 +1162,15 @@
         if (!at) { b.task = null; return; }
         b.task.at = at;
         if (b.task.visit) b.seen.set(b.task.visit, wall);
-        b.path = Math.hypot(at.x - b.x, at.y - b.y) > 0.05 ? this.plan.grid.path(b.x, b.y, at.x, at.y) : [];
+        b.path = Math.hypot(at.x - b.x, at.y - b.y) > 0.05 ? this.bossGrid().path(b.x, b.y, at.x, at.y) : [];
+        b.replan = wall + BOSS_REPLAN;
       }
       const t = b.task;
       if (t.visit && !this.visitOk(t)) { b.task = null; b.path = []; return; }
+      if (b.path.length && wall >= b.replan) {
+        b.replan = wall + BOSS_REPLAN;
+        b.path = this.bossGrid().path(b.x, b.y, t.at.x, t.at.y);
+      }
       if (b.path.length) {
         const n = b.path[0];
         const dx = n.x - b.x, dy = n.y - b.y, d = Math.hypot(dx, dy), v = SPEED * (t.act === 'exit' ? 1.8 : 0.85) * dt;
