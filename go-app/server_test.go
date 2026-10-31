@@ -489,6 +489,23 @@ func TestApiTimeAndServiceWorker(t *testing.T) {
 	}
 }
 
+func TestApiConfig(t *testing.T) {
+	s := newTestServer(t, newFakeSource(), Options{}, nil, nil)
+	rec := do(s, "GET", "/api/config", nil)
+	var got struct {
+		Office3D struct {
+			MinZoom float64 `json:"minZoom"`
+			MaxZoom float64 `json:"maxZoom"`
+		} `json:"office3d"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != 200 {
+		t.Fatalf("config: %d %v %s", rec.Code, err, rec.Body.String())
+	}
+	if got.Office3D.MinZoom != Office3DMinZoom || got.Office3D.MaxZoom != Office3DMaxZoom {
+		t.Errorf("config: zoom %v–%v, want %v–%v", got.Office3D.MinZoom, got.Office3D.MaxZoom, Office3DMinZoom, Office3DMaxZoom)
+	}
+}
+
 func TestApiSessionDetail(t *testing.T) {
 	src := newFakeSource(
 		Session{Agent: "claude", ID: "a", Prompt: "p", FullPrompt: "p\nfull", Reply: "r"},

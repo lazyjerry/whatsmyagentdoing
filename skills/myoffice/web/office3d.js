@@ -28,6 +28,7 @@ const STATUS_COLOR = {
 };
 const CHAR_HEIGHT = 0.92; // world units (≈ tiles)
 const BOSS_FAT = new THREE.Vector3(1.5, 1.05, 1.45); // the boss's torso, widened
+const BOSS_LEAN = -0.18; // radians the boss leans back while he walks, belly first
 const WALL_H = 2.4;
 const SIT_FORWARD = 0.16;
 
@@ -67,8 +68,9 @@ export class Office3D extends window.Office {
     this.controls.enableDamping = true;
     this.controls.minPolarAngle = 0.35;
     this.controls.maxPolarAngle = 1.25;
-    this.controls.minZoom = 0.6;
-    this.controls.maxZoom = 5;
+    // Zoom range from config.go (Office3DMinZoom / Office3DMaxZoom, via /api/config).
+    this.controls.minZoom = opts?.minZoom ?? 0.6;
+    this.controls.maxZoom = opts?.maxZoom ?? 5;
     this.controls.screenSpacePanning = true;
     this.controls.zoomToCursor = true;
     // Arrow keys pan the view while held, like a right-button drag. Keys
@@ -77,7 +79,7 @@ export class Office3D extends window.Office {
     this.onKey = (e) => {
       if (!/^Arrow(Up|Down|Left|Right)$/.test(e.key)) return;
       if (e.type === 'keyup') { this.keys.delete(e.key); return; }
-      if (!this.visible || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (!this.visible || this.lockView || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
       if (e.target.closest?.('input, select, textarea, [contenteditable], details[open]')) return;
       this.keys.add(e.key);
       e.preventDefault();
@@ -90,8 +92,9 @@ export class Office3D extends window.Office {
     // and Firefox send a pinch as a wheel with ctrlKey, which goes on to
     // OrbitControls; any other wheel is caught here before it gets there.
     // A mouse wheel therefore pans too, and zooms with Ctrl held.
+    // With the view locked the wheel is left alone and scrolls the page.
     this.onWheel = (e) => {
-      if (e.ctrlKey || !this.loaded) return;
+      if (e.ctrlKey || !this.loaded || this.lockView) return;
       e.preventDefault();
       e.stopPropagation();
       const px = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.ch : 1;
@@ -101,6 +104,7 @@ export class Office3D extends window.Office {
     // Safari sends a trackpad pinch as gesture events instead.
     this.onGesture = (e) => {
       e.preventDefault();
+      if (this.lockZoom || this.lockView) return;
       if (e.type === 'gesturestart') { this.pinchZoom = this.camera.zoom; return; }
       if (!this.pinchZoom) return;
       this.camera.zoom = THREE.MathUtils.clamp(this.pinchZoom * e.scale, this.controls.minZoom, this.controls.maxZoom);
@@ -108,6 +112,7 @@ export class Office3D extends window.Office {
     };
     root.addEventListener('wheel', this.onWheel, { capture: true, passive: false });
     for (const t of ['gesturestart', 'gesturechange']) root.addEventListener(t, this.onGesture);
+    this.setLocks(opts?.lockZoom, opts?.lockView);
 
     this.hemi = new THREE.HemisphereLight(0xfff8ee, 0x8a7a66, 1.0);
     this.scene.add(this.hemi);
@@ -295,6 +300,8 @@ export class Office3D extends window.Office {
     this.boxMesh(-T, dy - 0.6, 1.8, T, 1.2, WALL_H - 1.8, 0, { mat: wallMat });
     this.boxMesh(-T + 0.02, dy - 0.55, 0, 0.06, 1.1, 1.78, dark ? 0x5c4431 : 0xa8825a);
     this.boxMesh(0, dy - 0.6, 0, 0.9, 1.2, 0.01, dark ? 0x5a3b2e : 0xb9654a, { shadow: false });
+    // the light switch beside the door
+    this.boxMesh(0, this.switchSpot().y - 0.08, 1.0, 0.02, 0.16, 0.22, 0xf4f1ea, { shadow: false });
     // meeting room whiteboard
     const wb = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.15), new THREE.MeshStandardMaterial({ map: this.boardTexture('meet'), roughness: 0.9 }));
     wb.position.set(OW + 3.7, 1.375, 0.005);
@@ -515,7 +522,7 @@ export class Office3D extends window.Office {
       const dist = 40;
       this.camera.position.set(center.x + dist * 0.62, center.y + dist * 0.58, center.z + dist * 0.62);
       this.controls.target.copy(center);
-      this.camera.zoom = this.compact ? 1 : 1.25;
+      this.camera.zoom = this.lockView ? 1 : THREE.MathUtils.clamp(this.compact ? 1 : 1.25, this.controls.minZoom, this.controls.maxZoom);
       this.fitted = true;
     }
     this.camera.lookAt(this.controls.target);
@@ -545,6 +552,21 @@ export class Office3D extends window.Office {
     const r = Math.max(W, D) * 0.75;
     Object.assign(sc, { left: -r, right: r, top: r, bottom: -r, near: 1, far: 50 });
     sc.updateProjectionMatrix();
+  }
+
+  // Settings → "Lock zoom" keeps the current zoom and still pans and turns.
+  // "Lock view" goes back to the default angle at zoom 1 (the whole room,
+  // refitted as the office's height changes) and lets go of every input:
+  // no pan, turn or zoom, and the wheel or a touch drag scrolls the page.
+  setLocks(zoom, view) {
+    const was = this.lockView;
+    this.lockZoom = !!zoom;
+    this.lockView = !!view;
+    this.controls.enabled = !this.lockView;
+    this.controls.enableZoom = !this.lockZoom;
+    this.canvas.style.touchAction = this.lockView ? 'pan-y' : 'none';
+    if (this.lockView) this.keys.clear();
+    if (this.lockView && !was && this.fitted) this.fitCamera3D(true);
   }
 
   // Arrow keys: half the visible width per second.
@@ -699,6 +721,38 @@ export class Office3D extends window.Office {
     const ear = (sx) => { const e = new THREE.Mesh(new THREE.SphereGeometry(r * 0.2, 8, 6), mat(0xe0ad86)); e.position.set(sx * r, 0, 0); return e; };
     skull.add(head, fringe, eye(-1), eye(1), tache, ear(-1), ear(1));
     bone.head.add(skull);
+    // A black suit: the body's shirt, belt, shoes and legs (shorts and bare
+    // shins on this model) are pointed at the colormap's charcoal swatches;
+    // the hands keep their skin. The geometry is his own copy.
+    const body = obj.getObjectByName('body-mesh');
+    body.geometry = body.geometry.clone();
+    const uv = body.geometry.attributes.uv, si = body.geometry.attributes.skinIndex, bones = body.skeleton.bones;
+    for (let i = 0; i < uv.count; i++) {
+      const u = uv.getX(i), v = uv.getY(i), leg = bones[si.getX(i)].name.startsWith('leg');
+      if (Math.abs(u - 0.594) < 0.02) uv.setXY(i, 0.03, 0.78 + (v - 0.525) * 0.9);
+      else if (Math.abs(u - 0.719) < 0.02 && (!leg || v > 0.8)) uv.setXY(i, 0.03, 0.99);
+      else if (leg) uv.setXY(i, 0.094, 0.85);
+    }
+    // A round belly on the torso bone (widened with it), the open jacket
+    // showing the shirt over it and a red tie.
+    const tb = new THREE.Box3(), pv = new THREE.Vector3();
+    const ti = bones.indexOf(bone.torso);
+    for (let i = 0; i < si.count; i++) if (si.getX(i) === ti) tb.expandByPoint(body.getVertexPosition(i, pv).applyMatrix4(body.matrixWorld));
+    const kt = bone.torso.getWorldScale(new THREE.Vector3()).x;
+    const br = (tb.max.x - tb.min.x) * 0.44 / kt;
+    const belly = new THREE.Group();
+    belly.position.copy(bone.torso.worldToLocal(new THREE.Vector3((tb.min.x + tb.max.x) / 2, tb.min.y + (tb.max.y - tb.min.y) * 0.32, tb.max.z)))
+      .add(new THREE.Vector3(0, 0, -br * 0.4));
+    const bulge = new THREE.Mesh(new THREE.SphereGeometry(br, 24, 18), mat(0x34353a, 0.75));
+    const shirt = new THREE.Mesh(new THREE.SphereGeometry(br, 24, 18), mat(0xf4f1ea, 0.8));
+    shirt.scale.set(0.42, 0.95, 1);
+    shirt.position.z = br * 0.14;
+    const tie = new THREE.Mesh(new THREE.BoxGeometry(br * 0.24, br * 1.1, br * 0.1), mat(0xc0392b, 0.6));
+    tie.position.set(0, br * 0.35, br * 1.1);
+    tie.rotation.x = -0.45;
+    belly.add(bulge, shirt, tie);
+    for (const m of [bulge, shirt, tie]) m.castShadow = true;
+    bone.torso.add(belly);
     this.scene.add(obj);
     const mixer = new THREE.AnimationMixer(obj);
     const actions = {};
@@ -710,22 +764,31 @@ export class Office3D extends window.Office {
   syncBoss(dt) {
     const b = this.boss, a = this.bossActor();
     const act = this.bossAct();
-    this.play(a, act === 'walk' ? 'walk' : act === 'stand' ? 'idle' : 'interact-right');
+    a.obj.visible = act !== 'out';
+    if (act === 'out') return;
+    const walking = act === 'walk' || act === 'run';
+    // Talking, he nods and gestures by turns.
+    const talk = Math.sin(this.t / 1000 * 1.4) > 0 ? 'interact-right' : 'emote-yes';
+    this.play(a, { walk: 'walk', run: 'sprint', erase: 'interact-right', write: 'interact-right', switch: 'interact-left', talk }[act] || 'idle');
     // The clips key every bone's scale and blend with the current pose while
     // fading, so take last frame's widening off before the update and put it
     // back after; the head and arms are shrunk back to keep their size.
+    // The lean back while walking is taken off and put back the same way.
     const fat = (on) => {
       a.bone.torso.scale[on ? 'multiply' : 'divide'](BOSS_FAT);
       for (const k of ['head', 'arm-left', 'arm-right']) a.bone[k].scale[on ? 'divide' : 'multiply'](BOSS_FAT);
     };
     if (a.fat) fat(false);
+    if (a.lean) a.bone.torso.rotateX(-a.lean);
     a.mixer.update(dt);
     fat(true);
     a.fat = true;
+    a.lean = walking ? BOSS_LEAN : 0;
+    if (a.lean) a.bone.torso.rotateX(a.lean);
+    a.obj.rotation.z = walking ? Math.sin(this.t / 1000 * (act === 'run' ? 16 : 9)) * 0.06 : 0;
     const dx = b.x - a.last.x, dy = b.y - a.last.y;
-    let want = null;
-    if (act === 'erase' || act === 'write') want = this.boardSpot(b.task.board, 0).yaw;
-    else if (Math.hypot(dx, dy) > 0.001) want = Math.atan2(dx, dy);
+    let want = this.bossYaw();
+    if (want == null && Math.hypot(dx, dy) > 0.001) want = Math.atan2(dx, dy);
     if (want != null) {
       let d = want - a.yaw;
       d = Math.atan2(Math.sin(d), Math.cos(d));
@@ -877,15 +940,15 @@ export class Office3D extends window.Office {
     const dt = Math.min(0.05, this.clock.getDelta());
     const t = this.t / 1000;
 
-    // lighting follows the time of day
+    // lighting follows the time of day, and dims with the lights off
     const sky = skyNow();
-    this.sun.intensity = sky.sun;
-    this.hemi.intensity = sky.amb;
+    this.sun.intensity = sky.sun * (0.08 + 0.92 * this.lights);
+    this.hemi.intensity = sky.amb * (0.12 + 0.88 * this.lights);
     if (this.windowMat) {
       this.windowMat.color.setHex(sky.sky);
       this.windowMat.emissive.setHex(sky.sky);
     }
-    if (this.lampLight) this.lampLight.intensity = sky.night ? 2.2 : 0;
+    if (this.lampLight) this.lampLight.intensity = sky.night ? 2.2 * this.lights : 0;
 
     // screens show who is working and on what
     const occupant = new Map();
@@ -908,11 +971,12 @@ export class Office3D extends window.Office {
       b.m.material.emissiveIntensity = on ? 1.2 : 0.05;
     }
     if (this.arcadeScreen) this.arcadeScreen.material.emissive.setHSL((t * 0.05) % 1, 0.7, 0.5);
-    if (this.tvScreen) this.tvScreen.material.emissive.setHSL((t / 30) % 1, 0.55, 0.28);
+    // The TV is off along with the lights.
+    if (this.tvScreen) this.tvScreen.material.emissive.setHSL((t / 30) % 1, 0.55, this.lightsOn ? 0.28 : 0);
     if (this.tvPicture) {
       const tvp = this.tvPlayer;
       tvp.tick(performance.now());
-      this.tvPicture.visible = tvp.ready;
+      this.tvPicture.visible = tvp.ready && this.lightsOn;
       if (tvp.ready && tvp.version !== this.tvVersion) { this.tvVersion = tvp.version; this.tvTex.needsUpdate = true; }
     }
 
@@ -931,7 +995,7 @@ export class Office3D extends window.Office {
       });
     }
     this.panByKeys(dt);
-    this.controls.update();
+    if (!this.lockView) this.controls.update();
     this.clampPan();
     this.gl.render(this.scene, this.camera);
 
@@ -942,6 +1006,7 @@ export class Office3D extends window.Office {
       v.set(x, z, y).project(this.camera);
       return { x: (v.x + 1) / 2 * this.cw, y: (1 - v.y) / 2 * this.ch };
     });
+    const afterZones = this.hit.length;
     const heads = [];
     for (const p of this.people.values()) {
       const a = this.actors.get(p.key);
@@ -958,6 +1023,15 @@ export class Office3D extends window.Office {
     }
     heads.sort((a, b) => b[2] - a[2]);
     for (const [p, at] of heads) this.bubble(p, at);
+    if (this.bossAct() !== 'out') {
+      v.set(this.boss.x, CHAR_HEIGHT * 1.05 + 0.05, this.boss.y).project(this.camera);
+      this.bossBubble((v.x + 1) / 2 * this.cw, (1 - v.y) / 2 * this.ch);
+      // Clicking him opens his card (the page's onZone('boss')); he covers
+      // the boards and areas behind him, people still win over him.
+      const sx = (v.x + 1) / 2 * this.cw, sy = (1 - v.y) / 2 * this.ch;
+      const fy = (1 - new THREE.Vector3(this.boss.x, 0, this.boss.y).project(this.camera).y) / 2 * this.ch;
+      this.hit.splice(afterZones, 0, { key: 'zone:boss', x0: sx - 22, x1: sx + 22, y0: sy, y1: fy + 4 });
+    }
     if (this.offDuty > 0) {
       c.font = '600 11px ui-sans-serif, system-ui, -apple-system, "PingFang TC", sans-serif';
       c.textAlign = 'left';

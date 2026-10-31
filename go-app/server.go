@@ -300,6 +300,7 @@ type Server struct {
 	updater  *Updater
 	shutdown func()
 	restart  func()
+	stats    *statsScanner
 
 	mu      sync.Mutex
 	clients map[chan string]struct{}
@@ -314,6 +315,7 @@ func NewServer(src Source, opts Options, updater *Updater, onShutdown, onRestart
 		updater:  updater,
 		shutdown: onShutdown,
 		restart:  onRestart,
+		stats:    newStatsScanner(),
 		clients:  map[chan string]struct{}{},
 		done:     make(chan struct{}),
 	}
@@ -451,6 +453,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, 200, d, true)
 
+	case p == "/api/stats":
+		// Turns, completion and tool calls for the boss's card (stats.go).
+		if s.opts.Demo {
+			writeJSON(w, 200, demoStats(time.Now()), true)
+			return
+		}
+		writeJSON(w, 200, s.stats.compute(time.Now()), true)
+
 	case p == "/api/shutdown" && r.Method == "POST":
 		// Only our CLI sends this header; a web page can't add a custom header
 		// to a cross-site request without a CORS preflight, which we never allow.
@@ -496,6 +506,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// This host's clock; the page's corner clock syncs to it through sw.js.
 		writeJSON(w, 200, map[string]any{"now": time.Now().UnixMilli()}, true)
 
+	case p == "/api/config":
+		// Settings from config.go that the page needs.
+		writeJSON(w, 200, map[string]any{"office3d": map[string]any{"minZoom": Office3DMinZoom, "maxZoom": Office3DMaxZoom}}, true)
+
 	case p == "/events":
 		s.serveEvents(w, r)
 
@@ -504,6 +518,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	case strings.HasPrefix(p, "/api/tv/"):
 		s.serveTV(w, r, strings.TrimPrefix(p, "/api/tv/"))
+
+	case p == "/api/launch" && r.Method == "POST":
+		// Same guard as shutdown and update: web pages can't send this header cross-site.
+		if header != "launch" {
+			w.WriteHeader(403)
+			return
+		}
+		s.serveLaunch(w, r)
+
+	case p == "/api/launch":
+		writeJSON(w, 200, s.launchOptions(), true)
+
+	case p == "/api/launch/models":
+		writeJSON(w, 200, map[string]any{"models": s.launchModels(q.Get("agent"))}, true)
 
 	default:
 		w.WriteHeader(404)

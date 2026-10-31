@@ -87,3 +87,28 @@ const (
 	// 片單最多幾段。
 	TVMaxClips = 50
 )
+
+// 3D 辦公室的縮放範圍（/api/config 交給頁面，office3d.js 的 OrbitControls 與 Safari 捏合都照它夾）。
+// 數字是相機 zoom 倍率：1 是剛好裝進整間辦公室（子母畫面的起始值），主畫面起始 1.25；
+// 起始值超出範圍時也會被夾進來。網頁本身（瀏覽器的頁面縮放）一律鎖住，不在這裡設。
+const (
+	// 最多縮小到這個倍率。
+	Office3DMinZoom = 0.6
+	// 最多放大到這個倍率。
+	Office3DMaxZoom = 5.0
+)
+
+// 新對話（launch.go 用）：頁面選好 agent、model、資料夾與提示詞，在終端機開新視窗以互動模式啟動。
+const (
+	// 提示詞最多這麼多位元組。
+	LaunchPromptMax = 100_000
+	// 各 CLI 的 model 清單（`agy models`、`opencode models`、Codex 的 models_cache.json）沿用多久才重新偵測。
+	// 快取只在記憶體裡，重啟 dashboard 後第一次開新對話會重抓。
+	LaunchModelsCacheFor = 24 * time.Hour
+	// 列 model 的子行程最多跑這麼久。
+	LaunchListTimeout = 15 * time.Second
+)
+
+// 老闆的統計卡（stats.go 用）：點老闆時顯示 5 小時內、24 小時內與這週（週一 00:00 起）的
+// 對話輪數、完成率與工具呼叫次數。第一次要把這週動過的 log 全部讀一遍，之後只讀新增的部分。
+const StatsCacheFor = 30 * time.Second

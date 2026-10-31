@@ -181,6 +181,7 @@
   // (agenda, flow chart, burndown, vote), turned every few seconds.
   const MEET_PAGES = 4, MEET_PAGE_MS = 6000;
   const BOSS_EVERY = 60_000, BOSS_ERASE = 3500, BOSS_WRITE = 6000;
+  const BOSS_VISIT_MIN = 4000, BOSS_VISIT_MAX = 8000, BOSS_SWITCH = 700; // ms: one visit between rounds, flipping the light switch
   const FRIDGE_PUFF_EVERY = 24, FRIDGE_PUFF_FOR = 4, FRIDGE_PUFFS = 10; // seconds, seconds, puffs
   function drawMeetingBoard(c, W, H, ed, page) {
     const r = seeded(ed * 7 + 3);
@@ -543,6 +544,13 @@
       const home = this.bossHome();
       // The boss: first round a few seconds after the page opens, then once a minute.
       this.boss = { x: home.x, y: home.y, path: [], walkFace: 'front', tasks: [], task: null, next: Date.now() + 5000 };
+      // Between rounds he drops in on people (`seen`: key → when); with nobody
+      // left he switches the lights off and leaves (`leaving`, then `out`).
+      this.boss.seen = new Map();
+      this.boss.out = false;
+      this.boss.leaving = false;
+      this.lightsOn = true;
+      this.lights = 1; // eases toward lightsOn: 0 dark … 1 lit
       this.theme = matchMedia('(prefers-color-scheme: dark)');
       this.onTheme = () => (this.pal = palette());
       this.theme.addEventListener('change', this.onTheme);
@@ -904,6 +912,7 @@
           this.goTo(p, this.plan.door);
         }
       }
+      this.staffed(shown.size > 0);
       this.first = false;
     }
 
@@ -1010,76 +1019,198 @@
       return { x: OW + 2.4 + 2.6 * u, y: 0.55, yaw: Math.PI };
     }
 
+    // The boss only works while someone is in. When the last one goes he
+    // walks to the switch by the door, turns the lights off and hurries out;
+    // the first one back turns them on and he follows them in. An office
+    // that opens empty starts dark, without him.
+    staffed(any) {
+      const b = this.boss;
+      if (!any) {
+        if (b.out || b.leaving) return;
+        const t = b.task;
+        if (t && t.board && t.t0) this.boards[t.board].prog = null;
+        b.task = null; b.path = [];
+        if (this.first) {
+          b.out = true; this.lightsOn = false; this.lights = 0;
+          return;
+        }
+        b.leaving = true;
+        b.tasks = [{ act: 'switch' }, { act: 'exit' }];
+        return;
+      }
+      if (!b.out && !b.leaving) return;
+      this.lightsOn = true;
+      if (b.out) { const d = this.plan.door; b.x = d.x; b.y = d.y; }
+      b.out = false; b.leaving = false;
+      b.task = null; b.path = []; b.tasks = [];
+      b.next = Date.now() + 5000;
+    }
+
+    // Beside the door frame, towards the front corner.
+    switchSpot() {
+      return { x: 0.45, y: this.plan.door.y + 0.85, yaw: -Math.PI / 2 };
+    }
+
+    // A free spot `dist` from (x, y), trying direction `yaw` first and then
+    // turning further away from it; faces the boss toward `face` (a point) or along `yaw`.
+    spotNear(x, y, yaw, dist, face) {
+      const { grid, W, D } = this.plan;
+      for (const turn of [0, 0.8, -0.8, 1.6, -1.6, 2.4, -2.4, Math.PI]) {
+        const a = yaw + turn;
+        const sx = x + Math.sin(a) * dist, sy = y + Math.cos(a) * dist;
+        if (sx < 0.3 || sy < 0.3 || sx > W - 0.3 || sy > D - 0.3 || grid.blocked(sx, sy)) continue;
+        return { x: sx, y: sy, yaw: face ? Math.atan2(face.x - sx, face.y - sy) : yaw };
+      }
+      return null;
+    }
+
+    // Who the boss drops in on between rounds: finished people first, in
+    // turn (the one he saw longest ago), to talk; with none of them, a random
+    // person at a desk, to stand behind and watch the screen.
+    bossVisit() {
+      const b = this.boss;
+      const here = [...this.people.values()].filter((p) => !p.leaving);
+      for (const k of [...b.seen.keys()]) if (!this.people.has(k)) b.seen.delete(k);
+      const done = here.filter((p) => this.visitOk({ kind: 'talk' }, p));
+      const work = here.filter((p) => this.visitOk({ kind: 'watch' }, p));
+      let p, kind;
+      if (done.length) { kind = 'talk'; p = done.sort((a, c) => (b.seen.get(a.key) || 0) - (b.seen.get(c.key) || 0))[0]; }
+      else if (work.length) { kind = 'watch'; p = work[Math.floor(Math.random() * work.length)]; }
+      else return null;
+      return { visit: p.key, kind, poi: p.poi, desk: p.desk, dur: rand(BOSS_VISIT_MIN, BOSS_VISIT_MAX) };
+    }
+
+    // Is the visit still worth it: the person is here and still finished
+    // (and heading for the same seat), or still at the same desk.
+    visitOk(t, p = this.people.get(t.visit)) {
+      if (!p || p.leaving) return false;
+      if (t.kind === 'talk') return p.mode === 'wander' && p.s.status === 'done' && (!t.visit || p.poi === t.poi);
+      return p.mode === 'work' && !!p.desk && (!t.visit || p.desk === t.desk);
+    }
+
+    // Where a task takes the boss.
+    bossSpot(t) {
+      if (t.home) return this.bossHome();
+      if (t.board) return this.boardSpot(t.board, 1);
+      if (t.act === 'switch') return this.switchSpot();
+      if (t.act === 'exit') return this.plan.door;
+      const p = this.people.get(t.visit);
+      if (t.kind === 'talk') {
+        // In front of where they sit (or are heading to sit).
+        const q = p.poi || p;
+        const yaw = q.yaw != null ? q.yaw : q.face === 'back' ? Math.PI : 0;
+        return this.spotNear(q.x, q.y, yaw, 1.0, q);
+      }
+      // Behind the chair, looking at the same screen.
+      const yaw = p.desk.side === 'n' ? 0 : Math.PI;
+      const at = this.spotNear(p.desk.seat.x, p.desk.seat.y, yaw + Math.PI, 0.7);
+      return at && { ...at, yaw };
+    }
+
     // Once a minute the boss walks to the sales board, erases it right to left
     // and writes the next edition left to right, does the same in the meeting
-    // room, then goes back to his corner.
+    // room, then drops in on people one after another until the next round.
     moveBoss(dt, wall) {
       const b = this.boss;
-      if (!b.task && !b.tasks.length && wall >= b.next) {
+      if (b.out) return;
+      const inRound = (b.task && b.task.board) || b.tasks.some((t) => t.board);
+      if (!b.leaving && !inRound && wall >= b.next) {
         b.next = wall + BOSS_EVERY;
-        b.tasks = [{ board: 'sales' }, { board: 'meet' }, { home: true }];
+        b.task = null; b.path = [];
+        b.tasks = [{ board: 'sales' }, { board: 'meet' }];
       }
-      if (!b.task && b.tasks.length) {
+      if (!b.task && !b.tasks.length) b.tasks = [this.bossVisit() || { home: true }];
+      if (!b.task) {
         b.task = b.tasks.shift();
-        const at = b.task.home ? this.bossHome() : this.boardSpot(b.task.board, 1);
-        b.path = this.plan.grid.path(b.x, b.y, at.x, at.y);
+        const at = this.bossSpot(b.task);
+        if (!at) { b.task = null; return; }
+        b.task.at = at;
+        if (b.task.visit) b.seen.set(b.task.visit, wall);
+        b.path = Math.hypot(at.x - b.x, at.y - b.y) > 0.05 ? this.plan.grid.path(b.x, b.y, at.x, at.y) : [];
       }
+      const t = b.task;
+      if (t.visit && !this.visitOk(t)) { b.task = null; b.path = []; return; }
       if (b.path.length) {
         const n = b.path[0];
-        const dx = n.x - b.x, dy = n.y - b.y, d = Math.hypot(dx, dy), v = SPEED * 0.85 * dt;
+        const dx = n.x - b.x, dy = n.y - b.y, d = Math.hypot(dx, dy), v = SPEED * (t.act === 'exit' ? 1.8 : 0.85) * dt;
         if (d > 0.001) b.walkFace = dx + dy >= 0 ? 'front' : 'back';
         if (d <= v) { b.x = n.x; b.y = n.y; b.path.shift(); } else { b.x += (dx / d) * v; b.y += (dy / d) * v; }
         return;
       }
-      const t = b.task;
-      if (!t) return;
-      if (t.home) { b.task = null; return; }
-      const sb = this.boards[t.board];
-      if (!t.t0) { t.t0 = wall; sb.old = sb.ed; sb.ed++; }
+      if (!t.t0) t.t0 = wall;
       const e = wall - t.t0;
+      if (t.home) { if (e > 1500) b.task = null; return; }
+      if (t.visit) { if (e > t.dur) b.task = null; return; }
+      if (t.act === 'switch') { if (e > BOSS_SWITCH) { this.lightsOn = false; b.task = null; } return; }
+      if (t.act === 'exit') { b.out = true; b.leaving = false; b.task = null; return; }
+      const sb = this.boards[t.board];
+      if (!t.started) { t.started = true; sb.old = sb.ed; sb.ed++; }
       const prog = e < BOSS_ERASE ? e / BOSS_ERASE : 1 + Math.min(1, (e - BOSS_ERASE) / BOSS_WRITE);
       const at = this.boardSpot(t.board, prog < 1 ? 1 - prog : prog - 1);
       b.x = at.x; b.y = at.y;
       if (prog >= 2) { sb.prog = null; b.task = null; } else sb.prog = prog;
     }
 
-    // What the boss is doing right now: walking, erasing, writing or standing.
+    // What the boss is doing right now: out, walking, running (out the door),
+    // erasing, writing, talking, watching, at the switch or standing.
     bossAct() {
-      const b = this.boss;
-      if (b.path.length) return 'walk';
-      if (!b.task || b.task.home || !b.task.t0) return 'stand';
-      return this.boards[b.task.board].prog < 1 ? 'erase' : 'write';
+      const b = this.boss, t = b.task;
+      if (b.out) return 'out';
+      if (b.path.length) return t && t.act === 'exit' ? 'run' : 'walk';
+      if (!t || t.home || !t.t0) return 'stand';
+      if (t.visit) return t.kind;
+      if (t.act === 'switch') return 'switch';
+      if (t.board) return this.boards[t.board].prog < 1 ? 'erase' : 'write';
+      return 'stand';
     }
 
-    // A plump bald boss in a dark suit: seen from the back at a board.
+    // Which way the boss faces while he stands at a task (radians, 0 = +y).
+    bossYaw() {
+      const t = this.boss.task, act = this.bossAct();
+      if (act === 'erase' || act === 'write') return this.boardSpot(t.board, 0).yaw;
+      if (act === 'talk' || act === 'watch' || act === 'switch') return t.at.yaw;
+      return null;
+    }
+
+    // A plump bald boss in a black suit: seen from the back at a board. On
+    // the move he leans back and waddles, belly first.
     drawBoss() {
       const b = this.boss, c = this.ctx, t = this.t / 1000;
       const act = this.bossAct();
-      const walking = act === 'walk';
-      const front = walking ? b.walkFace !== 'back' : act === 'stand';
-      const step = walking ? Math.sin(t * 10) : 0;
+      if (act === 'out') { this.bossHead = null; return; }
+      const walking = act === 'walk' || act === 'run';
+      const yaw = this.bossYaw();
+      const front = walking ? b.walkFace !== 'back' : yaw != null ? Math.sin(yaw) + Math.cos(yaw) >= 0 : true;
+      const step = walking ? Math.sin(t * (act === 'run' ? 18 : 10)) : 0;
       const fb = this.iso(b.x, b.y, 0);
       c.fillStyle = this.pal.shadow;
       c.beginPath(); c.ellipse(fb.x, fb.y, 13, 6, 0, 0, Math.PI * 2); c.fill();
       c.save();
       c.translate(fb.x, fb.y - Math.abs(step) * 1.2);
-      c.fillStyle = '#2b2f3a';
+      if (walking) c.rotate(step * 0.06);
+      c.fillStyle = '#1b1c20';
       c.fillRect(-6, -10, 5, 10 + step * 2);
       c.fillRect(1, -10, 5, 10 - step * 2);
-      c.fillStyle = '#151515';
+      c.fillStyle = '#0b0b0c';
       c.fillRect(-6, -1 + step, 5, 2);
       c.fillRect(1, -1 - step, 5, 2);
-      // round belly in a suit; shirt and red tie from the front
-      c.fillStyle = '#3a4150';
-      c.beginPath(); c.ellipse(0, -20, 11.5, 11, 0, 0, Math.PI * 2); c.fill();
+      // round belly in a black suit, bigger and lower while he walks; from
+      // the front the open jacket shows the shirt over it and a red tie
+      const jiggle = Math.abs(step) * 0.8;
+      const by = walking ? -19 : -20, brx = walking ? 13 : 11.5, bry = (walking ? 12.5 : 11) - jiggle;
+      c.fillStyle = '#202227';
+      c.beginPath(); c.ellipse(0, by, brx, bry, 0, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = 'rgba(255,255,255,.14)'; c.lineWidth = 1;
+      c.stroke();
       if (front) {
         c.fillStyle = '#f4f1ea';
+        c.beginPath(); c.ellipse(0, by + 1, walking ? 5.5 : 4.5, bry - 1, 0, 0, Math.PI * 2); c.fill();
         c.beginPath(); c.moveTo(-4, -30); c.lineTo(4, -30); c.lineTo(0, -19); c.closePath(); c.fill();
         c.fillStyle = '#c0392b';
-        c.beginPath(); c.moveTo(-1.5, -28); c.lineTo(1.5, -28); c.lineTo(2.2, -17); c.lineTo(0, -15); c.lineTo(-2.2, -17); c.closePath(); c.fill();
+        c.beginPath(); c.moveTo(-1.5, -28); c.lineTo(1.5, -28); c.lineTo(2.2, -16); c.lineTo(0, -14); c.lineTo(-2.2, -16); c.closePath(); c.fill();
       }
       // arms: the right one up at the board, scrubbing or writing
-      c.fillStyle = '#323846';
+      c.fillStyle = '#26282e';
       c.fillRect(-13, -27, 3.5, 12);
       if (act === 'erase' || act === 'write') {
         const wig = act === 'erase' ? Math.sin(t * 16) * 2.5 : Math.sin(t * 9) * 1.2;
@@ -1106,6 +1237,24 @@
         c.fillStyle = '#6b6560';
         c.fillRect(-3.6, hy + 2.6, 7.2, 1.8);
       }
+      c.restore();
+      this.bossHead = { x: fb.x, y: fb.y + hy - 9 };
+      // Clicking him opens his card (the page's onZone('boss')).
+      this.hit.push({ key: 'zone:boss', x0: fb.x - 14, x1: fb.x + 14, y0: fb.y + hy - 9, y1: fb.y + 4 });
+    }
+
+    // A small bubble over the boss's head while he talks, watches a screen,
+    // flips the switch or runs for the door; (x, y) is the top of his head.
+    bossBubble(x, y) {
+      const emoji = { talk: '💬', watch: '👀', switch: '💡', run: '💨' }[this.bossAct()];
+      if (!emoji) return;
+      const c = this.ctx;
+      c.save();
+      this.roundRect(x - 11, y - 25, 22, 19, 6, this.pal.bubble, 'rgba(0,0,0,.18)', 1);
+      c.font = '400 12px "Apple Color Emoji", "Segoe UI Emoji", ui-sans-serif, system-ui, sans-serif';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText(emoji, x, y - 15);
       c.restore();
     }
 
@@ -1344,10 +1493,11 @@
         c.drawImage(sales, 0, 0);
       });
       this.poly([P(0, tv.y, 0.95), P(0, tv.y + tv.w, 0.95), P(0, tv.y + tv.w, 1.85), P(0, tv.y, 1.85)], '#111214');
-      this.poly([P(0, tv.y + 0.06, 1.0), P(0, tv.y + tv.w - 0.06, 1.0), P(0, tv.y + tv.w - 0.06, 1.8), P(0, tv.y + 0.06, 1.8)], `hsl(${(t * 12) % 360},55%,${pal.dark ? 26 : 34}%)`);
+      // The TV is off along with the lights.
+      this.poly([P(0, tv.y + 0.06, 1.0), P(0, tv.y + tv.w - 0.06, 1.0), P(0, tv.y + tv.w - 0.06, 1.8), P(0, tv.y + 0.06, 1.8)], this.lightsOn ? `hsl(${(t * 12) % 360},55%,${pal.dark ? 26 : 34}%)` : '#16171a');
       const tvp = this.tvPlayer;
       tvp.tick(performance.now());
-      if (tvp.ready) {
+      if (tvp.ready && this.lightsOn) {
         this.onWall('x0', tv.y + tv.w - 0.06, 1.8, (c) => {
           c.scale(((tv.w - 0.12) * TW / 2) / tvp.canvas.width, (0.8 * TH) / tvp.canvas.height);
           c.drawImage(tvp.canvas, 0, 0);
@@ -1366,6 +1516,11 @@
       this.poly([P(0, dy - 0.52, 0), P(0, dy + 0.52, 0), P(0, dy + 0.52, 1.72), P(0, dy - 0.52, 1.72)], this.shade(pal.deskL, -10));
       this.onWall('x0', dy - 0.25, 0.85, (c) => { c.fillStyle = '#d8c48a'; c.beginPath(); c.arc(0, 0, 1.8, 0, Math.PI * 2); c.fill(); });
       this.poly([P(0.05, dy - 0.6), P(0.9, dy - 0.6), P(0.9, dy + 0.6), P(0.05, dy + 0.6)], pal.dark ? '#5a3b2e' : '#b9654a');
+      // the light switch beside the door, toggle up while the lights are on
+      this.onWall('x0', this.switchSpot().y + 0.1, 1.15, (c) => {
+        c.fillStyle = '#f4f1ea'; c.fillRect(0, 0, 5, 7);
+        c.fillStyle = '#8a857c'; c.fillRect(1.8, this.lightsOn ? 1.2 : 3.6, 1.4, 2.2);
+      });
     }
 
     // ------------------------------------------------------------ furniture
@@ -2084,6 +2239,7 @@
       }
       this.moveCat(dt, wall);
       this.moveBoss(dt, wall);
+      this.lights += ((this.lightsOn ? 1 : 0) - this.lights) * Math.min(1, dt * 5);
       if (this.boards.meet.prog == null) this.boards.meet.page = Math.floor(wall / MEET_PAGE_MS) % MEET_PAGES;
       this.renderBoards();
     }
@@ -2119,6 +2275,15 @@
         if (it.person) heads.push([it.person, this.person(it.person)]);
         else it.draw();
       }
+      // Lights off: the room (floor and both walls) goes dark.
+      if (this.lights < 0.99) {
+        const { W, D } = this.plan;
+        const P = (x, y, z) => this.iso(x, y, z);
+        c.globalAlpha = (1 - this.lights) * (this.pal.dark ? 0.62 : 0.78);
+        this.poly([P(0, 0, WALL_H), P(W, 0, WALL_H), P(W, 0, 0), P(W, D, 0), P(0, D, 0), P(0, D, WALL_H)], '#060814');
+        c.globalAlpha = 1;
+      }
+      const boss = this.bossAct() !== 'out' && this.bossHead;
       if (this.compact) {
         // Keep labels readable when the room is scaled down for PiP.
         c.save();
@@ -2126,9 +2291,11 @@
         for (const [p, at] of heads) this.bubble(p, {
           ...at, x: at.x * this.cam.zoom + this.cam.ox, y: at.y * this.cam.zoom + this.cam.oy,
         });
+        if (boss) this.bossBubble(boss.x * this.cam.zoom + this.cam.ox, boss.y * this.cam.zoom + this.cam.oy);
         c.restore();
       } else {
         for (const [p, at] of heads) this.bubble(p, at);
+        if (boss) this.bossBubble(boss.x, boss.y);
       }
 
       if (this.offDuty > 0) {

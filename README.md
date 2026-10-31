@@ -122,6 +122,10 @@ skill 呼叫的就是這個執行檔（`scripts/installSkill.sh` 複製到 `skil
 
 工具列固定顯示檢視與彈出視窗控制項。2D/3D（預設 3D，子母畫面跟著主畫面）、Agent 與平台篩選（多選，預設全選）、顯示選項、通知與語言則收在**設定**裡。
 
+**畫面鎖定（3D）：** 設定面板「語言」下方有兩個開關，會保存並與子母畫面同步。**固定縮放尺寸**讓目前的縮放不再改變，平移與旋轉照常；**固定滾動**把畫面放回預設角度、1 倍縮放（整間辦公室都在畫面內，跟著辦公室高度重新取景），平移、旋轉、縮放與觸控的單指雙指操作全部停用，滾輪或觸控往下拉改成捲動整個頁面到下方列表。開啟固定滾動時，固定縮放尺寸一併生效。
+
+**新對話（macOS）：** 工具列的 **新對話** 開一個視窗：選 agent（只列出本機找得到的 `claude`／`codex`／`agy`（或 `gemini`）／`opencode`）、model（下拉選單，只能選「CLI 預設」或偵測到的 model，旁邊的 **?** 說明該 agent 的清單從哪裡來：Claude 取 `settings.json` 的 `model` 加上別名，Codex 取 `config.toml` 與 `models_cache.json`，Antigravity 跑 `agy models`，OpenCode 跑 `opencode models`，再加上近期 session 用過的 model；清單快取 24 小時。這些 CLI 收到不認得的 model 會直接報錯、不會自己退回預設，所以伺服器只接受清單上的 model，其他一律改用 CLI 預設）、是否 **非互動式執行**、資料夾（建議清單取近期 session 的目錄）與多行提示詞，⌘／Ctrl＋Enter 送出。伺服器把提示詞寫進暫存資料夾、產生一支 `.command` 腳本交給終端機開新視窗：預設以互動模式啟動 agent，權限詢問與後續對話都在終端機裡進行；勾了非互動式則直接執行這一則提示詞（`claude -p`、`codex exec`、`agy --prompt`、`opencode run`），跑完留下該資料夾的 shell，過程中不會停下來詢問權限。啟動後辦公室會照常從 log 追蹤到它。用哪個終端機在 **設定 → 終端機** 選：**系統預設** 是 Finder「取得資訊 → 打開檔案的應用程式」為 `.command` 指定的程式（沒改過就是「終端機」），另外列出裝在「應用程式」資料夾的 Terminal、iTerm2、Ghostty。`--demo` 模式只驗證欄位，不會真的開終端機。
+
 **彈出視窗：** 支援 [Document Picture-in-Picture API](https://developer.chrome.com/docs/web-platform/document-picture-in-picture) 的瀏覽器可以把辦公室或清單開成可互動、永遠置頂的視窗。精簡清單只顯示 **需要你**、**錯誤** 與 **工作中**。瀏覽器儲存可用時，檢視、畫質、篩選、語言與徽章設定會與主分頁同步。關閉彈出視窗會還原主檢視，且只有主分頁會送通知。
 
 當 Document PiP 不可用時，辦公室檢視的 **彈出** 會改為啟動本機的唯讀影片預覽（2D 或 3D 辦公室）。用它的影片 PiP 按鈕，或瀏覽器自己的影片控制項／右鍵選單（例如 Firefox）把它浮起來。用完請停止預覽。不需要螢幕分享權限，也不會上傳任何影片。背景動畫可能因瀏覽器節流而降低幀率；這個 fallback 不支援清單卡片，也不能點選 agent。
@@ -208,6 +212,27 @@ skill 的 `skills/myoffice/bin/whatsmyagentdoing` 與直接建出的 `go-app/wha
 | `TVMaxBytes` | 20 MB | 超過這個大小的 GIF 不播（頁面要把整個檔案讀進來解碼） |
 | `TVMaxClips` | 50 | 片單最多幾段 |
 
+**3D 縮放範圍。** 頁面由 `/api/config` 取得，捏合、Ctrl＋滾輪都夾在這個範圍內；起始倍率（主畫面 1.25、子母畫面 1）超出時也會夾進來。網頁本身（瀏覽器的頁面縮放：Ctrl／⌘＋`+` `-` `0`、Ctrl＋滾輪、觸控板或觸控螢幕捏合）一律鎖住，不受這兩個值影響。
+
+| 常數 | 預設 | 意思 |
+|---|---|---|
+| `Office3DMinZoom` | 0.6 | 最多縮小到這個倍率（1 是剛好裝進整間辦公室） |
+| `Office3DMaxZoom` | 5 | 最多放大到這個倍率 |
+
+**新對話。**
+
+| 常數 | 預設 | 意思 |
+|---|---|---|
+| `LaunchPromptMax` | 100,000 | 提示詞最多幾個位元組 |
+| `LaunchModelsCacheFor` | 24 小時 | 各 CLI 的 model 清單沿用多久才重新偵測（只存在記憶體，重啟 dashboard 後重抓） |
+| `LaunchListTimeout` | 15 秒 | 列 model 的子行程最多跑多久 |
+
+**老闆的報告。** 點辦公室裡的胖老闆會固定一張卡片：上半是各 agent 目前有幾個工作中、錯誤、等你回應（已完成與閒置不列），下半是 5 小時內、24 小時內與這週（週一 00:00 起）的對話輪數、完成率（已完成 ÷ 已結束的輪數，進行中的不算）與工具呼叫次數。統計由 `/api/stats` 提供：Claude Code、Codex、Gemini CLI 讀這週動過的 log 全文（第一次要全部讀一遍，之後只讀新增的部分），OpenCode 直接查資料庫；subagent 只計入工具呼叫；Antigravity 的摘要庫只留每個對話最新一輪，不列入統計。
+
+| 常數 | 預設 | 意思 |
+|---|---|---|
+| `StatsCacheFor` | 30 秒 | 一次統計結果沿用多久才重算 |
+
 ## 運作原理
 
 不需要 hook、不需要設定、不需要 API key。這些工具本來就會在工作時把每則訊息與工具呼叫 append 到 JSONL 檔：
@@ -219,6 +244,8 @@ skill 的 `skills/myoffice/bin/whatsmyagentdoing` 與直接建出的 `go-app/wha
 - OpenCode：`~/.local/share/opencode/opencode.db`（SQLite，`XDG_DATA_HOME` 可改位置；同樣透過 `sqlite3` 唯讀查詢，沒有就略過）
 
 `whatsmyagentdoing` 以唯讀方式 tail 這些檔案，把最新事件轉成狀態，再透過 Server-Sent Events 推到頁面。檔案位置不同的話，設定 `CLAUDE_CONFIG_DIR` / `CODEX_HOME` / `GEMINI_CLI_HOME` 即可。
+
+唯一會啟動程式的是 **新對話**（`POST /api/launch`）：跟關閉、更新一樣要帶自訂 header，跨站網頁送不出來；agent 名稱走白名單、model 只收偵測清單上的、資料夾先驗證，參數不經 shell 解析，提示詞只放進腳本裡加引號的變數。
 
 **隱私：** 沒有任何東西離開你的機器。伺服器只綁定 `127.0.0.1`，並拒絕非 localhost 的請求。沒有執行期依賴——後端只用 Go 標準函式庫（`go-app/`），沒有第三方套件。（`skills/myoffice/web/office3d.js` 是 3D 原始碼；`npm run build` 會把它與 three.js 打包成 `public/office3d.js`。）
 

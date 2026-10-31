@@ -127,6 +127,17 @@ async function drawnLogos(target) {
   await page.evaluate(()=>officeOpts.onHover(null,{x:0,y:0},true));
   assert.equal(await page.locator('#tip').isVisible(),false);
   check('both boards, the hotline desk, TV and fridge explain their area when clicked');
+  // The boss is clickable too: per agent, who is working, on an error or waiting on you (finished ones left out),
+  // then turns, completion and tool calls for 5 h / 24 h / this week from /api/stats (made-up numbers under --demo).
+  assert.equal(await page.evaluate(()=>{office.frame(performance.now());return office.hit.some(h=>h.key==='zone:boss')}),true);
+  const bossAt=await zoneAt('boss');
+  await page.evaluate(at=>officeOpts.onZone('boss',at),bossAt);
+  assert.equal(await page.locator('#tip .boss .zone-title').innerText(),'The boss’s report');
+  assert.deepEqual(await page.locator('#tip .boss li').evaluateAll(els=>els.map(e=>e.textContent.replace(/\s+/g,' ').trim())),['ClaudeWorking 2','CodexWaiting for you 1','GeminiWaiting for you 1']);
+  await page.waitForFunction(()=>document.querySelectorAll('#tip .boss tbody tr').length===3,{},{timeout:10000});
+  assert.deepEqual(await page.locator('#tip .boss tbody tr').evaluateAll(els=>els.map(e=>[...e.children].map(c=>c.textContent))),[['Last 5 h','14','85% 11/13','96'],['Last 24 h','52','86% 44/51','410'],['This week','187','86% 160/186','1,530']]);
+  await page.evaluate(()=>officeOpts.onHover(null,{x:0,y:0},true));
+  check('clicking the boss shows who is busy per agent and the 5 h / 24 h / week stats');
   // With nothing in the --tv-dir folder the TV plays the four built-in clips, frame after frame, and moves on to the next.
   await page.waitForFunction(()=>office.tvPlayer.ready&&office.tvPlayer.clips.length===4,{},{timeout:20000});
   assert.ok((await page.evaluate(()=>office.tvPlayer.clips)).every(c=>c.startsWith('/assets/tv/')));
@@ -136,20 +147,41 @@ async function drawnLogos(target) {
   await page.evaluate(()=>office.tvPlayer.next());
   await page.waitForFunction(i=>office.tvPlayer.i===(i+1)%4&&office.tvPlayer.dec&&office.tvPlayer.frame>0,clip0,{timeout:5000});
   check('the TV plays the built-in public-domain GIFs one after another');
-  // The boss erases and rewrites the sales board, then the meeting board, then walks back; each board moves to its next edition.
-  await page.waitForFunction(()=>!office.boss.task&&!office.boss.tasks.length,{},{timeout:45000});
+  // The boss erases and rewrites the sales board, then the meeting board; each board moves to its next edition.
+  const inRound='(office.boss.task?.board||office.boss.tasks.some(t=>t.board))';
+  await page.waitForFunction(`!${inRound}`,{},{timeout:45000});
   const ed0=await page.evaluate(()=>[office.boards.sales.ed,office.boards.meet.ed]);
   await page.evaluate(()=>{office.boss.next=0});
   await page.waitForFunction(()=>office.bossAct()==='erase'&&office.boss.task.board==='sales',{},{timeout:20000});
   await page.waitForFunction(()=>office.bossAct()==='write'&&office.boss.task.board==='meet',{},{timeout:40000});
-  await page.waitForFunction(()=>!office.boss.task&&!office.boss.tasks.length,{},{timeout:30000});
+  await page.waitForFunction(`!${inRound}`,{},{timeout:30000});
   assert.deepEqual(await page.evaluate(()=>[office.boards.sales.ed,office.boards.meet.ed,office.boards.sales.prog,office.boards.meet.prog]),[ed0[0]+1,ed0[1]+1,null,null]);
   // The meeting board turns its page every few seconds; the fridge puffs now and then.
   const page0=await page.evaluate(()=>office.boards.meet.page);
   await page.waitForFunction(p=>office.boards.meet.page!==p,page0,{timeout:8000});
   assert.ok(await page.evaluate(()=>office.fridgePuff(0)===0&&office.fridgePuff(10000)===null&&office.fridgeSmoke(0,0,0.5).length>0));
   check('the boss rewrites both whiteboards each round, the meeting board turns pages and the fridge puffs');
+  // Between rounds he talks to finished people in turn; with none of them he stands behind someone at a desk for 4–8 s.
+  await page.waitForFunction(()=>office.bossAct()==='talk',{},{timeout:30000});
+  assert.equal(await page.evaluate(()=>office.people.get(office.boss.task.visit).s.status),'done');
+  // Hold off the next board round so it can't start before he gets to the desk.
+  await page.evaluate(()=>{office.boss.next=Date.now()+120000});
+  await page.evaluate(()=>onData({now:Date.now(),sessions:[{key:'w:1',id:'w1',agent:'claude',project:'w1',status:'tool',platform:'cli',lastEventAt:Date.now(),startedAt:1}]}));
+  await page.waitForFunction(()=>office.bossAct()==='watch',{},{timeout:30000});
+  const watch=await page.evaluate(()=>{const t=office.boss.task,p=office.people.get(t.visit);return {mode:p.mode,dur:t.dur,behind:Math.sign(office.boss.y-p.desk.seat.y)===(p.desk.side==='n'?-1:1)}});
+  assert.equal(watch.mode,'work');assert.ok(watch.dur>=4000&&watch.dur<=8000);assert.equal(watch.behind,true);
+  check('between rounds the boss talks to finished agents, or else watches over a working one\'s shoulder');
+  // Nobody left: he flips the switch by the door and runs out; the office stays on screen in the dark, and he skips his rounds.
+  await page.evaluate(()=>onData({now:Date.now(),sessions:[]}));
+  await page.waitForFunction(()=>office.bossAct()==='switch',{},{timeout:30000});
+  await page.waitForFunction(()=>office.boss.out&&!office.lightsOn,{},{timeout:30000});
+  assert.equal(await page.locator('#officeWrap').isVisible(),true);
+  assert.equal(await page.locator('#main .empty').count(),0);
+  await page.evaluate(()=>{office.boss.next=0});await page.waitForTimeout(300);
+  assert.deepEqual(await page.evaluate(()=>[office.boss.out,office.boss.tasks.length,office.bossAct()]),[true,0,'out']);
+  check('with no agents the boss turns the lights off and leaves, and the dark office replaces the empty message');
   await page.evaluate(s=>onData({now:Date.now(),sessions:s}),sessions);await stable(page);
+  assert.deepEqual(await page.evaluate(()=>[office.lightsOn,office.boss.out]),[true,false]);
   await page.waitForFunction(()=>[...office.people.values()].every(p=>!p.leaving),{},{timeout:30000});
   assert.match(await page.title(),/Agents Office$/);
   assert.equal(await page.locator('h1').count(),0);
@@ -316,6 +348,7 @@ async function drawnLogos(target) {
   check('3D shows the TV picture and keeps it moving');
   assert.deepEqual(await page.evaluate(()=>[!!office.boss3d,Object.keys(office.boardTex).sort(),office.smoke.sprites.length]),[true,['meet','sales'],10]);
   assert.ok(await page.evaluate(()=>{const s=office.boss3d.bone.torso.scale;return s.x>1.2&&s.x<2&&s.z>1.2&&s.z<2}));
+  await page.waitForFunction(()=>office.hit.some(h=>h.key==='zone:boss'),{},{timeout:10000});
   check('3D has the plump boss, both whiteboard textures and the fridge puffs');
   assert.deepEqual(await page.evaluate(()=>[...office.people.values()].map(p=>[p.s.platform,office.modelName(p).split('-')[0]]).filter(([pf])=>pf==='vscode'||pf==='cli').map(([pf,g])=>`${pf}:${g}`).sort()),['cli:male','cli:male','cli:male','vscode:female','vscode:female']);
   check('3D picks the model group from the platform');
@@ -334,6 +367,20 @@ async function drawnLogos(target) {
   const cam2=await cam();assert.deepEqual([cam2.x,cam2.y,cam2.z].map(v=>v.toFixed(3)),[cam1.x,cam1.y,cam1.z].map(v=>v.toFixed(3)));
   await page.evaluate(()=>office.fitCamera3D(true));
   check('3D: two-finger scroll and arrow keys pan, a pinch zooms, and a resize keeps the pan');
+  // The 3D zoom range comes from config.go through /api/config; the page itself never zooms.
+  const range=await page.evaluate(()=>fetch('/api/config').then(r=>r.json()).then(c=>[c.office3d.minZoom,c.office3d.maxZoom]));
+  assert.deepEqual(await page.evaluate(()=>[office.controls.minZoom,office.controls.maxZoom]),range);
+  for(const dy of [-5000,-5000,5000,5000]){
+    await page.keyboard.down('Control');await page.mouse.wheel(0,dy);await page.keyboard.up('Control');await page.waitForTimeout(300);
+    const z=(await cam()).zoom;assert.ok(z>=range[0]-1e-6&&z<=range[1]+1e-6,`zoom ${z} outside ${range}`);
+  }
+  await page.evaluate(()=>office.fitCamera3D(true));
+  assert.deepEqual(await page.evaluate(()=>{
+    const wheel=new WheelEvent('wheel',{deltaY:-100,ctrlKey:true,bubbles:true,cancelable:true});document.body.dispatchEvent(wheel);
+    const key=new KeyboardEvent('keydown',{key:'=',ctrlKey:true,bubbles:true,cancelable:true});document.body.dispatchEvent(key);
+    return [wheel.defaultPrevented,key.defaultPrevented,/user-scalable=no/.test(document.querySelector('meta[name=viewport]').content)];
+  }),[true,true,true]);
+  check('3D zoom stays within config.go\'s range and the page itself never zooms');
   // Panning stops at the room's edges: scrolling further moves nothing, and the view stays within the room's bounds.
   const inRoom=()=>page.evaluate(()=>{const c=office.camera,b=office.roomInView(),hw=(c.right-c.left)/2/c.zoom,hh=(c.top-c.bottom)/2/c.zoom;
     const ok=(lo,hi,h)=>0>=Math.min(lo+h,hi-h)-1e-3&&0<=Math.max(lo+h,hi-h)+1e-3;return ok(b.minX,b.maxX,hw)&&ok(b.minY,b.maxY,hh)});
@@ -345,6 +392,29 @@ async function drawnLogos(target) {
   }
   await page.evaluate(()=>office.fitCamera3D(true));
   check('3D: panning stops at the room edges');
+  // Settings → Lock zoom holds the zoom but still pans; Lock view goes to zoom 1 at the default angle and the wheel scrolls the page.
+  const lockSetting=async(id,on)=>{await openSettings(page);await page.setChecked('#'+id,on);await page.keyboard.press('Escape');await page.mouse.move(640,520);};
+  await lockSetting('lockZoom',true);
+  cam0=await cam();await page.keyboard.down('Control');await page.mouse.wheel(0,-400);await page.keyboard.up('Control');await page.waitForTimeout(300);
+  assert.equal((await cam()).zoom,cam0.zoom);
+  await page.mouse.wheel(0,200);await page.waitForTimeout(150);cam1=await cam();
+  assert.notDeepEqual([cam1.x,cam1.y,cam1.z],[cam0.x,cam0.y,cam0.z]);
+  await lockSetting('lockZoom',false);
+  await lockSetting('lockView',true);
+  assert.equal(await page.isDisabled('#lockZoom'),true);
+  cam0=await cam();assert.equal(cam0.zoom,1);
+  assert.equal(await page.evaluate(()=>office.controls.enabled),false);
+  await page.evaluate(()=>office.fitCamera3D(true));
+  assert.deepEqual(Object.values(await cam()).map(v=>v.toFixed(3)),Object.values(cam0).map(v=>v.toFixed(3)));
+  await page.mouse.wheel(0,200);await page.keyboard.down('ArrowRight');await page.waitForTimeout(300);await page.keyboard.up('ArrowRight');
+  assert.deepEqual(await cam(),cam0);
+  assert.equal(await page.evaluate(()=>{const w=new WheelEvent('wheel',{deltaY:100,bubbles:true,cancelable:true});office.canvas.dispatchEvent(w);return w.defaultPrevented}),false);
+  assert.equal(await page.evaluate(()=>[office.canvas.style.touchAction,JSON.parse(localStorage.getItem('wmad.lockView'))].join()),'pan-y,true');
+  await page.evaluate(()=>scrollTo(0,0));
+  await lockSetting('lockView',false);
+  assert.equal(await page.evaluate(()=>office.controls.enabled&&office.canvas.style.touchAction==='none'),true);
+  await page.evaluate(()=>office.fitCamera3D(true));
+  check('Settings: Lock zoom holds the zoom, Lock view shows the whole room at the default angle and lets the wheel scroll the page');
   // Grow past the desks and back twice; the first round also uploads the shared textures of models not yet on screen.
   const actors0=await page.evaluate(()=>office.actors.size);
   const textures=[];
@@ -413,6 +483,8 @@ async function drawnLogos(target) {
   assert.equal(await page.evaluate(()=>office.visible),true);
   assert.equal(await page.locator('#pipBtn').isEnabled(),true);
   check('request failure gives a translated error and leaves the dashboard usable');
+  await page.waitForFunction(()=>{const e=document.getElementById('pipError');return e.hidden&&!e.textContent},null,{timeout:9000});
+  check('the pop-out error collapses on its own after 7 seconds');
   // Force only the capability branch; rendering and MediaStream remain real.
   const fallback=await context.newPage();
   await fallback.addInitScript(()=>Object.defineProperty(window,'documentPictureInPicture',{value:undefined}));
@@ -461,6 +533,47 @@ async function drawnLogos(target) {
    }
   }
   check('settings close with Escape/outside click, restore focus, and fit narrow and wide screens in both themes');
+  // New chat: the button opens a dialog with the agents the server found; a bad folder is refused; the demo never starts a real agent; Settings → Terminal is saved.
+  const launch=await page.evaluate(()=>fetch('/api/launch').then(r=>r.json()));
+  if(launch.supported&&launch.agents.length){
+   await page.click('#launchBtn');
+   assert.equal(await page.locator('#launchDlg').isVisible(),true);
+   assert.deepEqual(await page.$$eval('#launchAgent option',o=>o.map(x=>x.value)),launch.agents);
+   const cwds=await page.$$eval('#launchCwds option',o=>o.map(x=>x.value));
+   assert.ok(cwds.includes(await page.inputValue('#launchCwd')));
+   // Model is a menu: the CLI's default, then what the server detected; "?" says where the list comes from; an unlisted model runs with the default.
+   const agent=await page.inputValue('#launchAgent');
+   const models=await page.evaluate(a=>fetch('/api/launch/models?agent='+a).then(r=>r.json()).then(d=>d.models),agent);
+   await page.waitForFunction(n=>document.querySelectorAll('#launchModel option').length===n+1,models.length);
+   assert.deepEqual(await page.$$eval('#launchModel option',o=>o.map(x=>x.value)),['',...models]);
+   assert.ok((await page.getAttribute('#launchModelHelp','data-tip')).length>10);
+   const unlisted=await page.evaluate(a=>fetch('/api/launch',{method:'POST',headers:{'x-whatsmyagentdoing':'launch'},body:JSON.stringify({agent:a,model:'not-a-listed-model',cwd:'/',prompt:'x'})}).then(r=>r.json()),agent);
+   assert.deepEqual([unlisted.ok,unlisted.model],[true,'']);
+   // Non-interactive is remembered and changes the hint.
+   const hint=await page.locator('#launchHint').innerText();
+   await page.check('#launchPrint');
+   assert.notEqual(await page.locator('#launchHint').innerText(),hint);
+   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('wmad.launchPrint'))),true);
+   await page.uncheck('#launchPrint');
+   await page.fill('#launchPrompt','hello');
+   await page.fill('#launchCwd','/definitely/missing');await page.click('#launchSend');
+   await page.waitForSelector('#launchErr:not([hidden])');
+   assert.match(await page.locator('#launchErr').innerText(),/missing/);
+   await page.fill('#launchCwd','/');await page.click('#launchSend');
+   await page.waitForFunction(()=>!document.getElementById('launchDlg').open);
+   assert.equal(await page.inputValue('#launchPrompt'),'');
+   await openSettings(page);
+   const terms=await page.$$eval('#termSel option',o=>o.map(x=>x.value));
+   assert.equal(terms[0],'default');
+   await page.selectOption('#termSel',terms.at(-1));
+   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('wmad.terminal'))),terms.at(-1));
+   await page.selectOption('#termSel','default');
+   await page.locator('#settingsMenu > summary').press('Escape');
+   check('New chat: agents and detected models as menus with a "?" note, unlisted models fall back to the default, non-interactive is saved, a missing folder is refused, the demo starts nothing, and Settings → Terminal is saved');
+  } else {
+   assert.equal(await page.locator('#launchBtn').isVisible(),false);
+   check('New chat stays hidden where the server cannot start agents');
+  }
   assert.deepEqual(errors,[]);check('no uncaught browser errors');
   console.log('TOTAL',checks.length);
  } finally {

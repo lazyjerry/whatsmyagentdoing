@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Agents Office</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪑</text></svg>">
 <style>
@@ -199,12 +199,23 @@
   .office-resize:hover::before, .office-resize:focus-visible::before, .office-resize.dragging::before { background: var(--muted); }
   .office-resize:focus-visible { outline: none; }
   body.pip .office-resize { display: none; }
-  .tip { position: fixed; z-index: 10; width: 320px; max-width: calc(100vw - 24px); pointer-events: none; display: none; }
+  .tip { position: fixed; z-index: 10; width: 440px; max-width: calc(100vw - 24px); pointer-events: none; display: none; }
   .tip.pinned { pointer-events: auto; }
   .tip .card { box-shadow: 0 8px 30px rgba(0,0,0,.18); }
   .card.zone { gap: 6px; }
   .card.zone .zone-title { font-weight: 650; }
   .card.zone p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  /* The boss's card: who is busy per agent, then turns and tool calls over three windows. */
+  .card.boss .b-sec { font-size: 11.5px; font-weight: 650; color: var(--muted); margin-top: 4px; }
+  .card.boss ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+  .card.boss li { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; }
+  .card.boss li b { margin-right: 4px; }
+  .card.boss table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .card.boss th, .card.boss td { padding: 3px 0; text-align: right; font-weight: 400; }
+  .card.boss th:first-child { text-align: left; }
+  .card.boss thead th { color: var(--muted); font-size: 11.5px; }
+  .card.boss small { color: var(--muted); }
+  .card.boss .b-note { font-size: 11.5px; }
   /* Detail dialog: one session in full, opened from the office or the list. */
   .more { margin-left: auto; border: 0; background: none; color: var(--tool); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; padding: 0; flex: none; }
   .more:hover { color: var(--ink); }
@@ -222,6 +233,26 @@
   .detail .card .foot > :not(.model) { display: none; }
   .d-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-right: auto; }
   a.btn { display: inline-block; text-decoration: none; }
+  /* New chat dialog: agent, model, folder and prompt, started in a terminal window. */
+  .launch { width: min(640px, calc(100vw - 24px)); }
+  .l-form { display: flex; flex-direction: column; min-height: 0; }
+  .launch h2 { margin: 0; font-size: 15px; font-weight: 650; }
+  .l-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .l-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 12px; color: var(--muted); }
+  .l-field input, .l-field textarea { min-width: 0; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font: inherit; font-size: 13px; }
+  .l-field select { font-size: 13px; color: var(--ink); }
+  .l-field textarea { min-height: 140px; resize: vertical; line-height: 1.5; }
+  .l-hint { margin: 0; font-size: 12px; color: var(--faint); }
+  .l-err { margin: 0; font-size: 12.5px; color: var(--error); }
+  .btn.l-send { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+  .btn.l-send:disabled { opacity: .6; cursor: default; }
+  #termSel { max-width: 70%; }
+  @media (max-width: 520px) { .l-row { grid-template-columns: 1fr; } }
+  /* "?" after Model: how that agent's model list is found, on hover or keyboard focus. */
+  .l-help { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 2px; border: 1px solid var(--faint); border-radius: 50%; color: var(--muted); font-size: 10px; font-weight: 700; cursor: help; vertical-align: 1px; }
+  .l-help::after { content: attr(data-tip); position: absolute; z-index: 1; left: -8px; top: calc(100% + 6px); width: max-content; max-width: min(260px, 60vw); padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font-size: 12px; font-weight: 400; line-height: 1.5; white-space: normal; box-shadow: var(--shadow); opacity: 0; pointer-events: none; transition: opacity .15s; }
+  .l-help:hover::after, .l-help:focus-visible::after { opacity: 1; }
+  .l-print { color: var(--ink); }
   .legends { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 32px; margin-top: 10px; }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: 12px; }
   .legend span { display: inline-flex; align-items: center; gap: 5px; }
@@ -263,6 +294,8 @@
   body.pip section { margin-top: 12px; }
   body.pip section:first-child { margin-top: 0; }
   body.pip .grid { grid-template-columns: 1fr; }
+  /* The page itself never zooms (pinch or double-tap on touch screens). */
+  html { touch-action: pan-x pan-y; }
 </style>
 </head>
 <body>
@@ -316,11 +349,22 @@
               <label class="setting-label" for="langSel" data-t="language"></label>
               <select class="btn" id="langSel"></select>
             </div>
+            <div class="setting-toggles" id="viewLocks">
+              <label class="tog"><input type="checkbox" id="lockZoom"> <span data-t="lockZoom"></span></label>
+              <label class="tog"><input type="checkbox" id="lockView"> <span data-t="lockView"></span></label>
+            </div>
             <button class="btn" id="notify" data-t="notify"></button>
+          </div>
+          <div class="setting-group" id="launchGroup" hidden>
+            <div class="setting-row">
+              <label class="setting-label" for="termSel" data-t="terminal"></label>
+              <select class="btn" id="termSel"></select>
+            </div>
           </div>
         </div>
       </details>
       <button class="btn" id="refreshOffice" data-t="refreshOffice"></button>
+      <button class="btn" id="launchBtn" data-t="newChat" hidden></button>
     </div>
     <button class="newver" id="newVer" hidden></button>
     <div class="summary" id="summary"></div>
@@ -352,6 +396,24 @@
     <div id="dMeta"></div>
   </div>
   <form class="d-actions" method="dialog"><div class="d-acts" id="dActs"></div><button class="btn" data-t="close" autofocus></button></form>
+</dialog>
+<dialog class="detail launch" id="launchDlg" aria-labelledby="launchTitle">
+  <form class="l-form" id="launchForm">
+    <div class="d-body">
+      <h2 id="launchTitle" data-t="launchTitle"></h2>
+      <div class="l-row">
+        <label class="l-field"><span data-t="launchAgent"></span><select class="btn" id="launchAgent"></select></label>
+        <label class="l-field"><span><span data-t="launchModel"></span> <span class="l-help" id="launchModelHelp" tabindex="0" role="img">?</span></span><select class="btn" id="launchModel"></select></label>
+      </div>
+      <label class="tog l-print"><input type="checkbox" id="launchPrint"> <span data-t="launchPrint"></span></label>
+      <label class="l-field"><span data-t="cwd"></span><input id="launchCwd" list="launchCwds" required autocomplete="off" spellcheck="false"></label>
+      <label class="l-field"><span data-t="launchPrompt"></span><textarea id="launchPrompt" rows="8" required></textarea></label>
+      <p class="l-hint" id="launchHint"></p>
+      <p class="l-err" id="launchErr" role="alert" hidden></p>
+    </div>
+    <div class="d-actions"><button type="button" class="btn" id="launchClose" data-t="close"></button><button class="btn l-send" id="launchSend" data-t="launchSend"></button></div>
+    <datalist id="launchCwds"></datalist>
+  </form>
 </dialog>
 <div class="ver"><span id="ver"></span><time id="clock"></time></div>
 <script src="/i18n.js"></script>
@@ -405,7 +467,11 @@ const PREF_DEFAULTS = { view: 'office', quality: 'high', showSub: false, showAge
   // Agents and platforms are multi-select; storing what is unchecked keeps a newly added agent visible.
   hiddenAgents: [], hiddenPlatforms: [],
   // One switch per status group (the counts in the header and the settings panel share them).
-  showNeedsYou: true, showError: true, showWorking: true, showFinished: true, showIdle: false };
+  showNeedsYou: true, showError: true, showWorking: true, showFinished: true, showIdle: false,
+  // 3D only: keep the zoom where it is, or lock the whole view (zoom 1, default angle, wheel scrolls the page).
+  lockZoom: false, lockView: false,
+  // New chat: the terminal the agent starts in ('default' is whatever opens .command files).
+  terminal: 'default' };
 function validPreference(k, v) {
   if (!Object.hasOwn(PREF_DEFAULTS, k)) return false;
   if (typeof PREF_DEFAULTS[k] === 'boolean') return typeof v === 'boolean';
@@ -631,11 +697,11 @@ function render() {
     document.getElementById('officeWrap').style.display = 'none';
     hideTip();
   } else if (officeMode) {
-    document.getElementById('officeWrap').style.display = officeList.length ? '' : 'none';
     refreshTip();
   }
+  // With no agents the office stays on screen with its lights off instead of a message.
   if (!showsList() || (officeMode && !poppedOut && !officeList.length)) {
-    main.innerHTML = officeList.length ? '' : `<div class="empty">${esc(L.empty)}</div>`;
+    main.innerHTML = '';
     return;
   }
   const groups = PIP ? GROUPS.slice(0, 3) : GROUPS;
@@ -723,6 +789,9 @@ const showSub = document.getElementById('showSub');
 const showAgent = document.getElementById('showAgent');
 showSub.addEventListener('change', () => { state.showSub = showSub.checked; store.set('showSub', state.showSub); render(); });
 showAgent.addEventListener('change', () => { state.showAgent = showAgent.checked; store.set('showAgent', state.showAgent); syncControls(); render(); });
+const lockZoom = document.getElementById('lockZoom');
+const lockView = document.getElementById('lockView');
+for (const c of [lockZoom, lockView]) c.addEventListener('change', () => { state[c.id] = c.checked; store.set(c.id, c.checked); syncControls(); });
 // Status groups: the header counts and the settings checkboxes flip the same preference.
 function setStatusShown(key, on) {
   const g = GROUPS.find((x) => x.key === key); if (!g) return;
@@ -756,9 +825,16 @@ function syncControls() {
   document.querySelectorAll('#statusToggles input[data-g]').forEach((c) => { const g = GROUPS.find((x) => x.key === c.dataset.g); c.checked = !!(g && state[g.show]); });
   document.getElementById('agentBadgeToggle').style.display = showsOffice() ? '' : 'none';
   document.getElementById('agentLegend').hidden = !state.showAgent;
+  lockZoom.checked = state.lockZoom;
+  lockView.checked = state.lockView;
+  // Locking the view also holds the zoom.
+  lockZoom.disabled = state.lockView;
+  document.getElementById('viewLocks').hidden = !showsOffice() || state.quality !== 'high';
+  office?.setLocks?.(state.lockZoom, state.lockView);
   popout?.sync(PIP, showsOffice() ? 'office' : 'list');
   if (!window.Notification) notifyBtn.style.display = 'none';
   else if (Notification.permission === 'granted') { notifyBtn.textContent = L.notifyOn; notifyBtn.disabled = true; }
+  syncLaunch();
 }
 notifyBtn.addEventListener('click', () => Notification.requestPermission().then(syncControls));
 
@@ -787,8 +863,52 @@ function zoneCard(id) {
   const k = ZONE_TEXT[id];
   return `<div class="card zone"><div class="zone-title">${esc(L[k])}</div><p>${esc(L[k + 'Info'])}</p></div>`;
 }
+// Clicking the boss: how many sessions each agent has working, on an error
+// or waiting on you right now (finished ones are left out), and the turns,
+// completion and tool calls of the last 5 hours, 24 hours and this week from
+// /api/stats, fetched again at most every 30 seconds while the card is open.
+let bossStats = null, bossStatsAt = 0, bossStatsFailed = false;
+function loadBossStats() {
+  if (Date.now() - bossStatsAt < 30000) return;
+  bossStatsAt = Date.now();
+  fetch('/api/stats', { cache: 'no-store' })
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
+    .then((d) => { bossStats = d; bossStatsFailed = false; })
+    .catch(() => { bossStatsFailed = true; })
+    .finally(() => refreshTip());
+}
+const BOSS_WINDOW = { '5h': 'bossH5', '24h': 'bossH24', week: 'bossWeek' };
+function bossCard() {
+  loadBossStats();
+  const all = state.data.sessions.filter((s) => onAgent(s) && onPlatform(s) && (state.showSub || !s.subagent));
+  const busy = Object.keys(AGENT_NAME).map((a) => {
+    const mine = all.filter((s) => s.agent === a);
+    const parts = [
+      [L.working, mine.filter((s) => ACTIVE.has(s.status)).length, 'var(--tool)'],
+      [L.error, mine.filter((s) => s.status === 'error').length, 'var(--error)'],
+      [L.waiting, mine.filter((s) => s.status === 'waiting').length, 'var(--waiting)'],
+    ].filter(([, n]) => n);
+    if (!parts.length) return '';
+    return `<li><b>${esc(AGENT_NAME[a])}</b>${parts.map(([label, n, color]) => `<span class="dot" style="color:${color}"></span>${esc(label)} ${n}`).join(' · ')}</li>`;
+  }).join('');
+  let stats = `<p>${esc(bossStatsFailed && !bossStats ? L.bossFailed : L.bossLoading)}</p>`;
+  if (bossStats) {
+    const rows = bossStats.windows.map((w) => {
+      const ended = w.turns - w.running;
+      const other = ended - w.done - w.error - w.interrupted;
+      const title = `${L.done} ${w.done} · ${L.error} ${w.error} · ${L.interrupted} ${w.interrupted} · ${L.bossUnfinished} ${other} · ${L.working} ${w.running}`;
+      const rate = ended ? `${Math.round((w.done / ended) * 100)}% <small>${w.done}/${ended}</small>` : '–';
+      return `<tr title="${esc(title)}"><th>${esc(L[BOSS_WINDOW[w.key]])}</th><td>${w.turns.toLocaleString()}</td><td>${rate}</td><td>${w.tools.toLocaleString()}</td></tr>`;
+    }).join('');
+    stats = `<table><thead><tr><th></th><th>${esc(L.bossTurns)}</th><th>${esc(L.bossRate)}</th><th>${esc(L.bossTools)}</th></tr></thead><tbody>${rows}</tbody></table><p class="b-note">${esc(L.bossNote)}</p>`;
+  }
+  return `<div class="card zone boss"><div class="zone-title">${esc(L.zoneBoss)}</div>
+    <div class="b-sec">${esc(L.bossNow)}</div>${busy ? `<ul>${busy}</ul>` : `<p>${esc(L.bossQuiet)}</p>`}
+    <div class="b-sec">${esc(L.bossStats)}</div>${stats}</div>`;
+}
 function refreshTip() {
   if (!tipKey) return;
+  if (tipKey === 'zone:boss') { tip.innerHTML = bossCard(); placeTip(); return; }
   if (tipKey.startsWith('zone:')) { tip.innerHTML = zoneCard(tipKey.slice(5)); placeTip(); return; }
   const s = state.data.sessions.find((x) => x.key === tipKey);
   if (!s) return hideTip();
@@ -796,6 +916,9 @@ function refreshTip() {
   placeTip();
 }
 function hideTip() { tipKey = null; tipPinned = false; tip.style.display = 'none'; tip.classList.remove('pinned'); }
+// Settings from config.go (the 3D zoom range). Without them the 3D office
+// keeps its built-in defaults.
+const pageConfig = fetch('/api/config', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({}));
 const officeOpts = {
   compact: PIP,
   onFrame: (renderer) => popout?.drawPreview(renderer),
@@ -812,7 +935,7 @@ const officeOpts = {
     refreshTip();
   },
   onZone(id, at) {
-    if (!ZONE_TEXT[id]) return;
+    if (!ZONE_TEXT[id] && id !== 'boss') return;
     tipPinned = true; tip.classList.add('pinned');
     tipKey = 'zone:' + id; tipAt = at;
     tip.style.display = 'block';
@@ -836,9 +959,10 @@ async function makeOffice() {
   officeKind = kind;
   setLoading(true, high ? L.loading3d : L.loading2d);
   let Cls = window.Office;
-  const opts = { ...officeOpts, showAgent: state.showAgent };
+  let opts = { ...officeOpts, showAgent: state.showAgent, lockZoom: state.lockZoom, lockView: state.lockView };
   if (high) {
     try {
+      opts = { ...opts, ...(await pageConfig)?.office3d };
       Cls = (await import('/office3d.js')).Office3D;
     } catch (e) { console.error(e); Cls = window.Office; }
     if (officeKind !== kind) return;
@@ -867,6 +991,14 @@ async function makeOffice() {
   setLoading(false);
 }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideTip(); });
+// The page itself never zooms: Ctrl/⌘ with + − 0, Ctrl + wheel and a
+// trackpad pinch (a wheel with ctrlKey) are all stopped here. The 3D office
+// still gets the wheel and the pinch first and zooms its own camera.
+window.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && ['+', '=', '-', '_', '0'].includes(e.key)) e.preventDefault();
+});
+window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+for (const t of ['gesturestart', 'gesturechange']) document.addEventListener(t, (e) => e.preventDefault());
 // Rebuilds only the office scene (camera, people, props); the page, the
 // session stream and the settings stay as they are.
 document.getElementById('refreshOffice').addEventListener('click', () => {
@@ -968,6 +1100,98 @@ function detailActions(s) {
     + (s.title ? `<button type="button" class="btn" data-copy="${esc(s.title)}">${L.copyTitle}</button>` : '')
     + vscodeLink(s, 'btn');
 }
+
+// ---- new chat: pick an agent, a model, a folder and a prompt; the server
+// opens a terminal window running the agent (macOS only). Interactive by
+// default, so permission prompts and follow-ups happen there; with
+// "Non-interactive" on, the terminal runs the one prompt and stays open on the
+// output. The new session then shows up in the office from its log like any other.
+const launchDlg = document.getElementById('launchDlg'), launchForm = document.getElementById('launchForm');
+const launchAgentSel = document.getElementById('launchAgent'), launchModel = document.getElementById('launchModel');
+const launchCwd = document.getElementById('launchCwd'), launchPrompt = document.getElementById('launchPrompt');
+const launchErr = document.getElementById('launchErr'), launchSend = document.getElementById('launchSend');
+const launchPrint = document.getElementById('launchPrint'), launchHelp = document.getElementById('launchModelHelp');
+const termSel = document.getElementById('termSel');
+// The "?" after Model: how each agent's model list is found.
+const MODEL_HELP = { claude: 'modelHelpClaude', codex: 'modelHelpCodex', gemini: 'modelHelpGemini', opencode: 'modelHelpOpencode' };
+let launchInfo = null;
+const launchModelLists = new Map();
+fetch('/api/launch', { cache: 'no-store' }).then((r) => r.json()).then((info) => {
+  if (!info.supported || !info.agents.length) return;
+  launchInfo = info;
+  launchAgentSel.innerHTML = info.agents.map((a) => `<option value="${esc(a)}">${esc(AGENT_NAME[a] || a)}</option>`).join('');
+  syncControls();
+}).catch(() => {});
+// Called from syncControls: the button, the Settings → Terminal menu and the translated texts.
+function syncLaunch() {
+  const on = !!launchInfo && !PIP;
+  document.getElementById('launchBtn').hidden = !on;
+  document.getElementById('launchGroup').hidden = !on;
+  if (!on) return;
+  const terms = launchInfo.terminals;
+  setHTML(termSel, terms.map((t) => `<option value="${esc(t.id)}">${esc(t.id === 'default' ? L.termDefault : t.name)}</option>`).join(''));
+  termSel.value = terms.some((t) => t.id === state.terminal) ? state.terminal : 'default';
+  const t = terms.find((x) => x.id === termSel.value);
+  const name = t.id === 'default' ? L.terminal : t.name;
+  document.getElementById('launchHint').textContent = launchPrint.checked ? L.launchHintPrint(name) : L.launchHint(name);
+  if (launchModel.options[0]) launchModel.options[0].textContent = L.launchModelDefault;
+  launchHelp.dataset.tip = `${L[MODEL_HELP[launchAgentSel.value]] || ''} ${L.modelHelpNote}`.trim();
+  launchHelp.ariaLabel = launchHelp.dataset.tip;
+}
+termSel.addEventListener('change', () => { state.terminal = termSel.value; store.set('terminal', state.terminal); syncControls(); });
+// Only the models the server found, plus the CLI's own default (the CLIs
+// refuse a model they don't know rather than fall back, so nothing is typed in).
+function loadLaunchModels() {
+  const agent = launchAgentSel.value;
+  const fill = (list) => {
+    if (launchAgentSel.value !== agent) return;
+    const last = store.get('launchModel.' + agent, '');
+    launchModel.innerHTML = `<option value="">${esc(L.launchModelDefault)}</option>` + list.map((m) => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+    launchModel.value = list.includes(last) ? last : '';
+  };
+  if (launchModelLists.has(agent)) return fill(launchModelLists.get(agent));
+  fill([]);
+  fetch('/api/launch/models?agent=' + encodeURIComponent(agent), { cache: 'no-store' }).then((r) => r.json())
+    .then((d) => { launchModelLists.set(agent, d.models || []); fill(d.models || []); }).catch(() => {});
+}
+function openLaunch() {
+  if (!launchInfo) return;
+  hideTip(); settingsMenu.open = false;
+  const last = store.get('launchAgent', null);
+  if (launchInfo.agents.includes(last)) launchAgentSel.value = last;
+  launchPrint.checked = store.get('launchPrint', false);
+  // Folders of recent sessions, newest first; the newest is the default.
+  const cwds = [...new Set(state.data.sessions.filter((s) => s.cwd).sort((a, b) => (b.lastEventAt || 0) - (a.lastEventAt || 0)).map((s) => s.cwd))];
+  document.getElementById('launchCwds').innerHTML = cwds.map((c) => `<option value="${esc(c)}"></option>`).join('');
+  if (!launchCwd.value) launchCwd.value = cwds[0] || '';
+  launchErr.hidden = true;
+  loadLaunchModels();
+  syncLaunch();
+  launchDlg.showModal();
+  launchPrompt.focus();
+}
+document.getElementById('launchBtn').addEventListener('click', openLaunch);
+launchAgentSel.addEventListener('change', () => { loadLaunchModels(); syncLaunch(); });
+launchPrint.addEventListener('change', () => { store.set('launchPrint', launchPrint.checked); syncLaunch(); });
+launchPrompt.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); launchForm.requestSubmit(); }
+});
+document.getElementById('launchClose').addEventListener('click', () => launchDlg.close());
+launchDlg.addEventListener('click', (e) => { if (e.target === launchDlg) launchDlg.close(); });
+// The draft stays in the form when the dialog closes; only a started chat clears it.
+launchForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  launchErr.hidden = true;
+  launchSend.disabled = true; launchSend.textContent = L.launchSending;
+  const body = { agent: launchAgentSel.value, model: launchModel.value, cwd: launchCwd.value.trim(), prompt: launchPrompt.value, terminal: termSel.value, print: launchPrint.checked };
+  const r = await fetch('/api/launch', { method: 'POST', headers: { 'content-type': 'application/json', 'x-whatsmyagentdoing': 'launch' }, body: JSON.stringify(body) })
+    .then((x) => x.json()).catch(() => ({ ok: false }));
+  launchSend.disabled = false; launchSend.textContent = L.launchSend;
+  if (!r.ok) { launchErr.textContent = `${L.launchFailed}${r.error ? ': ' + r.error : ''}`; launchErr.hidden = false; return; }
+  store.set('launchAgent', body.agent); store.set('launchModel.' + body.agent, body.model);
+  launchPrompt.value = '';
+  launchDlg.close();
+});
 
 // ---- version + one-click update
 const verEl = document.getElementById('ver');

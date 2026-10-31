@@ -46,12 +46,19 @@
     fail() {
       this.error.textContent = this.text('pipFailed');
       this.error.hidden = false;
+      clearTimeout(this.errorTimer);
+      this.errorTimer = setTimeout(() => this.clearError(), 7000);
+    }
+
+    clearError() {
+      clearTimeout(this.errorTimer);
+      this.error.textContent = '';
+      this.error.hidden = true;
     }
 
     async toggle() {
       if (this.busy) return;
-      this.error.textContent = '';
-      this.error.hidden = true;
+      this.clearError();
       if (this.win) { this.close(); return; }
       if (this.stream) { this.stopPreview(); return; }
       this.busy = true;
