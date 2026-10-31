@@ -158,7 +158,7 @@ skill 的 `skills/myoffice/bin/whatsmyagentdoing` 與直接建出的 `go-app/wha
 
 舊版的 `--scenes`、`--scene <id>`、`--remove-scene <id>` 已移除，場景只剩內建的辦公室。以前下載的場景包還留在 `~/.whatsmyagentdoing/scenes/`，不再使用，可以手動刪掉。
 
-**更新：** 頁面右下角有 **檢查更新** 按鈕，滑鼠移上去顯示目前版本號，旁邊的時鐘是主機目前時間（由 `sw.js` 這個 service worker 對 `/api/time` 校準，所有分頁共用同一個時間差）；只有按下按鈕時才會抓一次本 repo main 分支的 `skills/myoffice/package.json`，不會自動檢查，有新版時改顯示 **Update** 按鈕。要改成自動（頁面載入與每半小時、CLI 啟動時都檢查），把 `go-app/config.go` 的 `AutoUpdateCheck` 改成 `true`；設定 `WMAD_NO_UPDATE_CHECK=1` 則兩種模式都不檢查。按下按鈕——或執行 `--update`、或說 `/myoffice update`——會在 clone 執行 `git pull`、重新同步 `static/` 並重新 `go build`（需要 Go），只在執行檔還放在 clone 的 `go-app/` 或 `skills/myoffice/bin/` 裡時可用。
+**更新：** 設定面板最下方顯示目前版本號與 **檢查更新** 按鈕，頁面右下角的時鐘是主機目前時間（由 `sw.js` 這個 service worker 對 `/api/time` 校準，所有分頁共用同一個時間差）；只有按下按鈕時才會抓一次本 repo main 分支的 `skills/myoffice/package.json`，不會自動檢查，有新版時改顯示 **Update** 按鈕。要改成自動（頁面載入與每半小時、CLI 啟動時都檢查），把 `go-app/config.go` 的 `AutoUpdateCheck` 改成 `true`；設定 `WMAD_NO_UPDATE_CHECK=1` 則兩種模式都不檢查。按下按鈕——或執行 `--update`、或說 `/myoffice update`——會在 clone 執行 `git pull`、重新同步 `static/` 並重新 `go build`（需要 Go），只在執行檔還放在 clone 的 `go-app/` 或 `skills/myoffice/bin/` 裡時可用。
 
 ## 設定
 
@@ -252,6 +252,27 @@ skill 的 `skills/myoffice/bin/whatsmyagentdoing` 與直接建出的 `go-app/wha
 唯一會啟動程式的是 **新對話**（`POST /api/launch`）：跟關閉、更新一樣要帶自訂 header，跨站網頁送不出來；agent 名稱走白名單、model 只收偵測清單上的、資料夾先驗證，參數不經 shell 解析，提示詞只放進腳本裡加引號的變數。
 
 **隱私：** 沒有任何東西離開你的機器。伺服器只綁定 `127.0.0.1`，並拒絕非 localhost 的請求。沒有執行期依賴——後端只用 Go 標準函式庫（`go-app/`），沒有第三方套件。（`skills/myoffice/web/office3d.js` 是 3D 原始碼；`npm run build` 會把它與 three.js 打包成 `public/office3d.js`。）
+
+## 狀態判定
+
+狀態分兩步決定：先由 parser 依 log 裡最新的事件給一個狀態，再由 `go-app/server.go` 的 `view()` 依「距最後一個事件多久」改判。Log 只記完成的區塊，第二步用來處理突然沒了動靜的 session。
+
+**第一步：事件 → 狀態。**
+
+| 狀態 | 什麼事件會進入 |
+|---|---|
+| 💭 思考中 | 你送出 prompt、模型開始推理、工具結果回來後模型接著想；Antigravity 是摘要庫標記執行中，或 `agy -p` 的行程還在 |
+| ⏳ 執行中 | 出現工具呼叫、還沒有結果（Gemini CLI 與 OpenCode 看工具呼叫自己的狀態欄位） |
+| ✍️ 撰寫回覆 | 回覆的文字區塊落地，但這一輪還沒收尾 |
+| 🟠 等你回應 | Claude Code 的 `AskUserQuestion`／`ExitPlanMode`；Codex 的核准請求與 `request_user_input`；Gemini CLI 的 `awaiting_approval` |
+| ✅ 完成 | 這一輪有明確的收尾訊號：Claude Code 的 `stop_reason` 為 `end_turn`／`stop_sequence` 或 `stop_hook_summary`；Codex 的 `task_complete`；OpenCode 的訊息帶完成時間；Antigravity 的摘要庫是 `IDLE` 且已有步驟。Gemini CLI 沒有收尾事件，只能靠第二步 |
+| ■ 中斷 | 你中斷了這一輪：Claude Code 的 `[Request interrupted`、Codex 的 `turn_aborted`、Gemini CLI 含 cancel／interrupt 的訊息、OpenCode 的 `MessageAbortedError`、Antigravity 被 kill |
+| ❗ 錯誤 | log 記下的錯誤事件（API 錯誤等） |
+| – 閒置 | 還沒解析到能判斷的事件：剛出現的 session、OpenCode 沒有訊息、Antigravity 沒有步驟 |
+
+**第二步：沒動靜就改判。** 撰寫回覆太久沒有後續 → 完成；思考中、執行中、等你回應、錯誤太久沒動靜 → 閒置。各自等多久見〈設定〉的狀態時鐘。完成與中斷不會再隨時間改判，一直留著，直到超過 `--hours`（預設 24 小時）沒活動才從畫面消失。
+
+**完成與閒置的差別：** 完成是確定這一輪做完了（有收尾訊號，或回覆寫完後沒有後續）；閒置是不確定它怎麼了——還沒開始，或做到一半沒了動靜，多半是被中途關掉。所以頁首計數與清單裡，中斷跟完成同屬「已完成」、預設顯示，閒置自成一組、預設隱藏。
 
 ## 限制
 

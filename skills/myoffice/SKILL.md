@@ -39,8 +39,8 @@ description: 開啟一個即時的「辦公室」畫面，顯示這台機器上�
 要**更新**時（使用者輸入 `/myoffice update`，或要求更新、升級）：
 執行 `"<base directory>/bin/whatsmyagentdoing" --update`（不要在背景執行）。
 它會 `git pull` 後重新 `go build`，同樣需要 Go；找不到 `go` 就照上面第 1 點提示安裝。
-回報它印出的版本號，再依上述方式重新啟動。頁面右下角的「檢查更新」按鈕
-滑鼠移上去會顯示版本號，按下後若有新版會出現「Update」按鈕。
+回報它印出的版本號，再依上述方式重新啟動。頁面設定面板最下方顯示版本號與「檢查更新」按鈕，
+按下後若有新版會出現「Update」按鈕。
 若它回報執行檔不在 clone 裡（not inside its go-app/ source folder），
 改走「執行檔不存在時」的第 2 點重建一次。
 
