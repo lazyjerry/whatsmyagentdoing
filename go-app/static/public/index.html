@@ -193,12 +193,21 @@
   .office-gl, .office-overlay { position: absolute; inset: 0; }
   .office-overlay { touch-action: none; }
   /* The office eats wheel events for panning; leave a strip on the right where the wheel scrolls the page. */
-  body:not(.pip) .office { margin-right: clamp(32px, 5vw, 64px); }
+  body:not(.pip) .office-row { margin-right: clamp(32px, 5vw, 64px); }
   .office-resize { height: 14px; margin-bottom: -10px; display: flex; align-items: center; justify-content: center; cursor: ns-resize; touch-action: none; }
   .office-resize::before { content: ''; width: 56px; height: 4px; border-radius: 2px; background: var(--line); }
   .office-resize:hover::before, .office-resize:focus-visible::before, .office-resize.dragging::before { background: var(--muted); }
   .office-resize:focus-visible { outline: none; }
   body.pip .office-resize { display: none; }
+  /* The bar right of the office sets its width, even past the window (the page scrolls sideways). */
+  .office-row { display: flex; }
+  .office-row > .office { flex: 1 1 auto; min-width: 0; }
+  .office-resize-x { flex: none; width: 14px; margin-right: -10px; display: flex; align-items: center; justify-content: center; cursor: ew-resize; touch-action: none; }
+  .office-resize-x::before { content: ''; width: 4px; height: 56px; border-radius: 2px; background: var(--line); }
+  .office-resize-x:hover::before, .office-resize-x:focus-visible::before, .office-resize-x.dragging::before { background: var(--muted); }
+  .office-resize-x:focus-visible { outline: none; }
+  body.pip .office-row { flex: 1; min-height: 0; }
+  body.pip .office-resize-x { display: none; }
   .tip { position: fixed; z-index: 10; width: 440px; max-width: calc(100vw - 24px); pointer-events: none; display: none; }
   .tip.pinned { pointer-events: auto; }
   .tip .card { box-shadow: 0 8px 30px rgba(0,0,0,.18); }
@@ -377,7 +386,10 @@
     <button class="btn" id="closePreview" data-t="pipStop"></button>
   </div>
   <div id="officeWrap">
-    <div class="office loading" id="office"><div class="office-loader"><div class="spin"></div><span id="loaderText"></span></div></div>
+    <div class="office-row">
+      <div class="office loading" id="office"><div class="office-loader"><div class="spin"></div><span id="loaderText"></span></div></div>
+      <div class="office-resize-x" id="officeResizeX" role="separator" aria-orientation="vertical" tabindex="0"></div>
+    </div>
     <div class="office-resize" id="officeResize" role="separator" aria-orientation="horizontal" tabindex="0"></div>
     <div class="legends">
       <div class="legend" id="legend"></div>
@@ -451,6 +463,8 @@ function applyLang(code) {
   if (sel) sel.options[0].textContent = `🌐 ${L.auto}`;
   const resizeBar = document.getElementById('officeResize');
   if (resizeBar) resizeBar.title = resizeBar.ariaLabel = L.resizeOffice;
+  const resizeBarX = document.getElementById('officeResizeX');
+  if (resizeBarX) resizeBarX.title = resizeBarX.ariaLabel = L.resizeOfficeWidth;
   if (typeof office !== 'undefined' && office) office.offDutyLabel = L.wentHome;
   if (typeof syncControls === 'function') syncControls();
   if (typeof renderVersion === 'function') renderVersion();
@@ -1012,7 +1026,7 @@ document.getElementById('refreshOffice').addEventListener('click', () => {
   const box = document.getElementById('office');
   const bar = document.getElementById('officeResize');
   const MIN = 200;
-  const clamp = (h) => Math.round(Math.min(Math.max(MIN, innerHeight - 80), Math.max(MIN, h)));
+  const clamp = (h) => Math.round(Math.max(MIN, h));
   const apply = (h) => {
     box.style.height = h == null ? '' : `${clamp(h)}px`;
     box.style.minHeight = h == null ? '' : `${MIN}px`;
@@ -1036,6 +1050,41 @@ document.getElementById('refreshOffice').addEventListener('click', () => {
     const step = e.key === 'ArrowUp' ? -40 : e.key === 'ArrowDown' ? 40 : 0;
     if (!step) return;
     e.preventDefault(); apply(box.getBoundingClientRect().height + step); save();
+  });
+}
+
+// ---- office width: the same for the bar right of the office (left/right
+// arrow keys); the bar under it follows so its grip stays centered.
+{
+  const box = document.getElementById('office');
+  const bar = document.getElementById('officeResizeX');
+  const under = document.getElementById('officeResize');
+  const MIN = 320;
+  const clamp = (w) => Math.round(Math.max(MIN, w));
+  const apply = (w) => {
+    const px = w == null ? '' : `${clamp(w)}px`;
+    box.style.width = under.style.width = px;
+    box.style.flex = w == null ? '' : 'none';
+  };
+  const save = () => store.set('officeWidth', box.style.width ? parseInt(box.style.width, 10) : null);
+  const saved = store.get('officeWidth', null);
+  if (!PIP && Number.isFinite(saved)) apply(saved);
+  let drag = null;
+  bar.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault(); hideTip();
+    drag = { x: e.clientX, w: box.getBoundingClientRect().width };
+    bar.setPointerCapture(e.pointerId); bar.classList.add('dragging');
+  });
+  bar.addEventListener('pointermove', (e) => { if (drag) apply(drag.w + e.clientX - drag.x); });
+  const end = () => { if (!drag) return; drag = null; bar.classList.remove('dragging'); save(); };
+  bar.addEventListener('pointerup', end);
+  bar.addEventListener('pointercancel', end);
+  bar.addEventListener('dblclick', () => { apply(null); save(); });
+  bar.addEventListener('keydown', (e) => {
+    const step = e.key === 'ArrowLeft' ? -40 : e.key === 'ArrowRight' ? 40 : 0;
+    if (!step) return;
+    e.preventDefault(); apply(box.getBoundingClientRect().width + step); save();
   });
 }
 
