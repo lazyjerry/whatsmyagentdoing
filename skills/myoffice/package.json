@@ -1,6 +1,6 @@
 {
   "name": "whatsmyagentdoing",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "See what every Claude Code, Codex, Gemini CLI and OpenCode agent on your machine is doing, live in your browser.",
   "files": [
     "public",
