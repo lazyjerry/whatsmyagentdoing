@@ -112,3 +112,11 @@ const (
 // 老闆的統計卡（stats.go 用）：點老闆時顯示 5 小時內、24 小時內與這週（週一 00:00 起）的
 // 對話輪數、完成率與工具呼叫次數。第一次要把這週動過的 log 全部讀一遍，之後只讀新增的部分。
 const StatsCacheFor = 30 * time.Second
+
+// 待辦清單與 agent 姓名（todo.go 用）：永久存在家目錄下的 SQLite 檔，透過 sqlite3 指令讀寫；
+// --demo 改用暫存資料夾，不碰這個檔。
+const (
+	OfficeDB = ".whatsmyagentdoing/office.db"
+	// 一則待辦最多幾個字（只收一行，換行與 tab 換成空白）。
+	TodoTextMax = 200
+)

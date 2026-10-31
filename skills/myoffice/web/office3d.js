@@ -1018,7 +1018,7 @@ export class Office3D extends window.Office {
       const sx = (v.x + 1) / 2 * this.cw, sy = (1 - v.y) / 2 * this.ch;
       const foot = new THREE.Vector3(p.x, 0, p.y).project(this.camera);
       const fy = (1 - foot.y) / 2 * this.ch;
-      heads.push([p, { x: sx, y: sy, act: st.act }, v.z]);
+      heads.push([p, { x: sx, y: sy, act: st.act, foot: fy }, v.z]);
       this.hit.push({ key: p.key, x0: sx - 18, x1: sx + 18, y0: sy - 24, y1: fy + 4 });
     }
     heads.sort((a, b) => b[2] - a[2]);

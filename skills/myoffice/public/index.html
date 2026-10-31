@@ -82,7 +82,7 @@
   .settings[open] > summary { background: var(--line); }
   .settings[open] > summary::after { content: "⌃"; }
   .filter-active { font-size: 11px; color: var(--tool); }
-  .settings-panel { position: absolute; z-index: 20; right: 0; top: calc(100% + 10px); width: min(360px, calc(100vw - 32px)); max-height: calc(100dvh - 180px); overflow-y: auto; overscroll-behavior: contain; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 12px 40px #0003; }
+  .settings-panel { position: absolute; z-index: 20; right: 0; top: calc(100% + 10px); width: min(360px, calc(100vw - 32px)); max-height: calc(100dvh - 82px); overflow-y: auto; overscroll-behavior: contain; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 12px 40px #0003; }
   .setting-group + .setting-group { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
   .setting-label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 9px; }
   #officeGroup[hidden] + .setting-group { margin-top: 0; padding-top: 0; border-top: 0; }
@@ -201,13 +201,63 @@
   body.pip .office-resize { display: none; }
   /* The bar right of the office sets its width, even past the window (the page scrolls sideways). */
   .office-row { display: flex; }
-  .office-row > .office { flex: 1 1 auto; min-width: 0; }
+  .office-row > .office { flex: 65 1 0; min-width: 0; }
   .office-resize-x { flex: none; width: 14px; margin-right: -10px; display: flex; align-items: center; justify-content: center; cursor: ew-resize; touch-action: none; }
   .office-resize-x::before { content: ''; width: 4px; height: 56px; border-radius: 2px; background: var(--line); }
   .office-resize-x:hover::before, .office-resize-x:focus-visible::before, .office-resize-x.dragging::before { background: var(--muted); }
   .office-resize-x:focus-visible { outline: none; }
   body.pip .office-row { flex: 1; min-height: 0; }
   body.pip .office-resize-x { display: none; }
+  /* To-do list right of the office: your own items, kept in this browser. Office and list share
+     the row 65:35 (a dragged office width keeps its size and the list takes the rest). contain: size
+     lets the office alone set the row's height; the list scrolls inside it. Side padding sits on the
+     children so it doesn't count toward the flex base size and skew the ratio. */
+  .todo { flex: 35 1 0; min-width: 410px; margin-left: 10px; contain: size; display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+  .todo > * { margin-inline: 12px; }
+  .todo-head { display: flex; align-items: center; gap: 8px; }
+  .todo-head h2 { margin: 0; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .todo-head .n { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+  #todoInput { width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: inherit; font-size: 13px; }
+  .todo-note { margin-block: 0; font-size: 12px; color: var(--muted); }
+  .todo-note.err { color: var(--error); }
+  .todo-list { flex: 1; min-height: 0; overflow-y: auto; margin-block: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+  .todo-list li { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-top: 1px solid var(--line); min-width: 0; }
+  .todo-list li:first-child { border-top: 0; }
+  .todo-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .todo-text { flex: 1; min-width: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  [data-st="done"] > .todo-row .todo-text { color: var(--faint); text-decoration: line-through; }
+  [data-st="todo"] { --st: var(--muted); }
+  [data-st="doing"] { --st: var(--tool); }
+  [data-st="done"] { --st: var(--done); }
+  [data-st="paused"] { --st: var(--waiting); }
+  .todo-st { flex: none; padding: 2px 4px; font-size: 11.5px; border-radius: 6px; color: var(--st); border-color: color-mix(in srgb, var(--st) 45%, var(--line)); }
+  /* One line: the name gives way (ellipsis) before the times do. */
+  .todo-meta { display: flex; align-items: center; gap: 10px; min-width: 0; white-space: nowrap; font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .todo-meta > span { flex: none; }
+  .todo-meta > .todo-agent { flex: 0 1 auto; min-width: 0; }
+  .todo-agent { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); }
+  .todo-agent > span { overflow: hidden; text-overflow: ellipsis; }
+  .todo-agent .agent-logo { width: 14px; height: 14px; padding: 0; }
+  .todo-del { flex: none; margin-left: auto; border: 0; background: none; color: var(--faint); font: inherit; font-size: 11px; cursor: pointer; padding: 0; }
+  .todo-del:hover { color: var(--error); }
+  /* An assigned agent's name: clicking it asks to take the to-do back. */
+  button.todo-agent { border: 0; background: none; font: inherit; padding: 0; cursor: pointer; }
+  button.todo-agent:hover > span { color: var(--ink); text-decoration: underline; }
+  .todo-head .todo-del { font-size: 12px; }
+  /* The pinned office card: the agent's to-dos and a menu to assign one more. */
+  .tip-todo:not(:empty) { margin-top: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.18); }
+  .tip-todo .tp-head { font-size: 11.5px; font-weight: 650; color: var(--muted); }
+  .tip-todo ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+  .tip-todo li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .tip-todo li .todo-text { font-size: 12.5px; }
+  .tip-todo li small { flex: none; color: var(--st); font-size: 11px; }
+  .tip-todo li .todo-del { margin-left: 0; font-size: 14px; line-height: 1; }
+  .tip-todo select { width: 100%; font-size: 12.5px; }
+  .tip-todo p { margin: 0; font-size: 12px; color: var(--faint); }
+  /* The agent's name (todo.go): a loose alias for the session key. */
+  .alias { font-size: 11px; color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; flex: none; align-self: flex-start; }
+  @media (max-width: 760px) { .office-row { flex-wrap: wrap; } .todo { flex: none; width: 100%; min-width: 0; height: 260px; margin: 12px 0 0; } }
+  body.pip .todo { display: none; }
   .tip { position: fixed; z-index: 10; width: 440px; max-width: calc(100vw - 24px); pointer-events: none; display: none; }
   .tip.pinned { pointer-events: auto; }
   .tip .card { box-shadow: 0 8px 30px rgba(0,0,0,.18); }
@@ -275,13 +325,10 @@
   .newver:disabled { opacity: .7; cursor: default; animation: none; }
   @keyframes glowv { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--tool) 25%, transparent); } }
   .ver { position: fixed; right: 14px; bottom: 12px; display: flex; gap: 10px; align-items: center; font-size: 12px; color: var(--faint); z-index: 5; }
-  .ver button { border: 1px solid var(--tool); background: color-mix(in srgb, var(--tool) 14%, var(--panel)); color: var(--ink); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 12px; cursor: pointer; }
-  .ver button:disabled { opacity: .6; cursor: default; }
-  #ver { display: contents; }
-  /* the running version shows above the button on hover or keyboard focus */
-  .ver [data-ver] { position: relative; }
-  .ver [data-ver]::after { content: attr(data-ver); position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; box-shadow: var(--shadow); opacity: 0; pointer-events: none; transition: opacity .15s; }
-  .ver [data-ver]:hover::after, .ver [data-ver]:focus-visible::after { opacity: 1; }
+  /* version row at the bottom of the settings panel: running version + check / update */
+  #verNum { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+  #ver { color: var(--muted); font-size: 12px; text-align: right; }
+  #ver button:disabled { opacity: .6; cursor: default; }
   .ver time { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .empty { text-align: center; color: var(--muted); padding: 60px 16px; border: 1px dashed var(--line); border-radius: 12px; }
   .empty code { background: var(--panel); padding: 2px 6px; border-radius: 4px; }
@@ -363,12 +410,21 @@
               <label class="tog"><input type="checkbox" id="lockZoom"> <span data-t="lockZoom"></span></label>
               <label class="tog"><input type="checkbox" id="lockView"> <span data-t="lockView"></span></label>
             </div>
+            <div class="setting-toggles">
+              <label class="tog"><input type="checkbox" id="showTodo"> <span data-t="todo"></span></label>
+            </div>
             <button class="btn" id="notify" data-t="notify"></button>
           </div>
           <div class="setting-group" id="launchGroup" hidden>
             <div class="setting-row">
               <label class="setting-label" for="termSel" data-t="terminal"></label>
               <select class="btn" id="termSel"></select>
+            </div>
+          </div>
+          <div class="setting-group" id="verGroup" hidden>
+            <div class="setting-row">
+              <span class="setting-label"><span data-t="version"></span> <span id="verNum"></span></span>
+              <span id="ver"></span>
             </div>
           </div>
         </div>
@@ -390,6 +446,12 @@
     <div class="office-row">
       <div class="office loading" id="office"><div class="office-loader"><div class="spin"></div><span id="loaderText"></span></div></div>
       <div class="office-resize-x" id="officeResizeX" role="separator" aria-orientation="vertical" tabindex="0"></div>
+      <aside class="todo" id="todo" aria-labelledby="todoTitle" hidden>
+        <div class="todo-head"><h2 id="todoTitle" data-t="todo"></h2><span class="n" id="todoCount"></span><button class="todo-del" id="todoClear" hidden></button></div>
+        <form id="todoForm"><input id="todoInput" maxlength="200" autocomplete="off"></form>
+        <p class="todo-note" id="todoNote" role="alert" hidden></p>
+        <ul class="todo-list" id="todoList"></ul>
+      </aside>
     </div>
     <div class="office-resize" id="officeResize" role="separator" aria-orientation="horizontal" tabindex="0"></div>
     <div class="legends">
@@ -428,7 +490,7 @@
     <datalist id="launchCwds"></datalist>
   </form>
 </dialog>
-<div class="ver"><span id="ver"></span><time id="clock"></time></div>
+<div class="ver"><time id="clock"></time></div>
 <script src="/i18n.js"></script>
 <script src="/office.js"></script>
 <script src="/popout.js"></script>
@@ -466,6 +528,9 @@ function applyLang(code) {
   if (resizeBar) resizeBar.title = resizeBar.ariaLabel = L.resizeOffice;
   const resizeBarX = document.getElementById('officeResizeX');
   if (resizeBarX) resizeBarX.title = resizeBarX.ariaLabel = L.resizeOfficeWidth;
+  const todoInput = document.getElementById('todoInput');
+  if (todoInput) todoInput.placeholder = todoInput.ariaLabel = L.todoAdd;
+  if (typeof renderTodos === 'function') renderTodos();
   if (typeof office !== 'undefined' && office) office.offDutyLabel = L.wentHome;
   if (typeof syncControls === 'function') syncControls();
   if (typeof renderVersion === 'function') renderVersion();
@@ -485,6 +550,8 @@ const PREF_DEFAULTS = { view: 'office', quality: 'high', showSub: false, showAge
   showNeedsYou: true, showError: true, showWorking: true, showFinished: true, showIdle: false,
   // 3D only: keep the zoom where it is, or lock the whole view (zoom 1, default angle, wheel scrolls the page).
   lockZoom: false, lockView: false,
+  // The to-do list right of the office (main page only).
+  showTodo: true,
   // New chat: the terminal the agent starts in ('default' is whatever opens .command files).
   terminal: 'default' };
 function validPreference(k, v) {
@@ -619,11 +686,12 @@ function agentLogo(agent) {
 
 // The platform and what started the turn, as small tags under the title row.
 function tags(s) {
+  const alias = s.name ? `<span class="alias">${esc(s.name)}</span>` : '';
   const platform = s.platform ? `<span class="platform">${esc(PLATFORM_NAME[s.platform] || s.platform)}</span>` : '';
   const kind = PROMPT_ICON[s.promptKind] ? `<span class="kind">${PROMPT_ICON[s.promptKind]} ${esc(L[PROMPT_KIND_KEY[s.promptKind]])}</span>` : '';
   const alerts = ALERT_KEYS.filter(([k]) => (s.alerts || []).includes(k))
     .map(([k, label]) => `<span class="alert" data-a="${k}"><span class="alert-chip">${esc(OFFICE_ALERT_TEXT(k, s))}</span> ${esc(L[label])}</span>`).join('');
-  return platform || kind || alerts ? `<div class="tags">${platform}${kind}${alerts}</div>` : '';
+  return alias || platform || kind || alerts ? `<div class="tags">${alias}${platform}${kind}${alerts}</div>` : '';
 }
 
 // Everything the server sends that the compact card has no room for; shown
@@ -770,6 +838,7 @@ function onData(data) {
   state.loaded = true;
   applyLang(chooseLang(data.lang));
   render();
+  renderTodos();
   refreshDetail();
 }
 
@@ -792,6 +861,14 @@ document.addEventListener('keydown', (e) => {
   }
 });
 settingsMenu.addEventListener('toggle', () => { if (settingsMenu.open) hideTip(); });
+// The panel runs down to the bottom of the window, so most settings show without scrolling.
+const settingsPanel = document.getElementById('settingsPanel');
+function fitSettings() {
+  if (settingsMenu.open) settingsPanel.style.maxHeight = `${Math.max(200, innerHeight - settingsPanel.getBoundingClientRect().top - 12)}px`;
+}
+settingsMenu.addEventListener('toggle', fitSettings);
+window.addEventListener('resize', fitSettings);
+window.addEventListener('scroll', fitSettings, { passive: true });
 
 document.getElementById('qualSeg').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
@@ -816,6 +893,8 @@ showAgent.addEventListener('change', () => { state.showAgent = showAgent.checked
 const lockZoom = document.getElementById('lockZoom');
 const lockView = document.getElementById('lockView');
 for (const c of [lockZoom, lockView]) c.addEventListener('change', () => { state[c.id] = c.checked; store.set(c.id, c.checked); syncControls(); });
+const showTodo = document.getElementById('showTodo');
+showTodo.addEventListener('change', () => { state.showTodo = showTodo.checked; store.set('showTodo', state.showTodo); syncControls(); });
 // Status groups: the header counts and the settings checkboxes flip the same preference.
 function setStatusShown(key, on) {
   const g = GROUPS.find((x) => x.key === key); if (!g) return;
@@ -855,6 +934,8 @@ function syncControls() {
   lockZoom.disabled = state.lockView;
   document.getElementById('viewLocks').hidden = !showsOffice() || state.quality !== 'high';
   office?.setLocks?.(state.lockZoom, state.lockView);
+  showTodo.checked = state.showTodo;
+  document.getElementById('todo').hidden = PIP || !state.showTodo;
   popout?.sync(PIP, showsOffice() ? 'office' : 'list');
   if (!window.Notification) notifyBtn.style.display = 'none';
   else if (Notification.permission === 'granted') { notifyBtn.textContent = L.notifyOn; notifyBtn.disabled = true; }
@@ -936,7 +1017,11 @@ function refreshTip() {
   if (tipKey.startsWith('zone:')) { tip.innerHTML = zoneCard(tipKey.slice(5)); placeTip(); return; }
   const s = state.data.sessions.find((x) => x.key === tipKey);
   if (!s) return hideTip();
-  tip.innerHTML = card(s, Date.now() - state.skew, true);
+  // The card redraws every second; the to-do part (pinned only) just when it
+  // changes, so its menu stays open.
+  if (!tip.querySelector(':scope > .tip-todo')) tip.innerHTML = '<div></div><div class="tip-todo"></div>';
+  setHTML(tip.firstElementChild, card(s, Date.now() - state.skew, true));
+  setHTML(tip.lastElementChild, tipPinned ? todoPicker(s) : '');
   placeTip();
 }
 function hideTip() { tipKey = null; tipPinned = false; tip.style.display = 'none'; tip.classList.remove('pinned'); }
@@ -947,7 +1032,7 @@ const officeOpts = {
   compact: PIP,
   onFrame: (renderer) => popout?.drawPreview(renderer),
   label: (s) => (PROMPT_ICON[s.promptKind] ? PROMPT_ICON[s.promptKind] + ' ' : '') + (s.project || AGENT_NAME[s.agent] || s.agent),
-  sublabel: (s) => (s.platform ? PLATFORM_NAME[s.platform] || s.platform : ''),
+  sublabel: (s) => [s.platform ? PLATFORM_NAME[s.platform] || s.platform : '', s.name].filter(Boolean).join(' · '),
   onHover(s, at, click) {
     if (click) {
       if (!s) return hideTip();
@@ -1097,6 +1182,119 @@ document.getElementById('refreshOffice').addEventListener('click', () => {
     e.preventDefault(); apply(box.getBoundingClientRect().width + step); save();
   });
 }
+
+// ---- to-do list right of the office. The items live in office.db on the
+// server (todo.go) and come with every snapshot (state.data.todos; null when
+// the server can't keep them). Each has a status, the agent it is assigned to
+// (picked on that agent's pinned office card), and when it was created and
+// last changed. Agents finishing finish their to-dos on the server. Any can be
+// deleted after a confirm (two for an unfinished one), the finished ones all
+// at once from the head. Settings shows or hides it.
+const TODO_STATUSES = ['todo', 'doing', 'done', 'paused'];
+const TODO_LABEL = { todo: 'todoTodo', doing: 'todoDoing', done: 'todoDone', paused: 'todoPaused' };
+const TODO_ORDER = { doing: 0, todo: 1, paused: 2, done: 3 };
+const todoList = document.getElementById('todoList');
+const todoNote = document.getElementById('todoNote');
+function todoOp(body) {
+  return fetch('/api/todos', { method: 'POST', headers: { 'content-type': 'application/json', 'x-whatsmyagentdoing': 'todo' }, body: JSON.stringify(body) })
+    .then((r) => r.json())
+    .then((d) => { if (!d.ok) throw new Error(d.error || ''); todoNote.hidden = true; return true; })
+    .catch((e) => {
+      todoNote.className = 'todo-note err';
+      todoNote.textContent = L.todoFailed + (e.message ? `: ${e.message}` : '');
+      todoNote.hidden = false;
+      return false;
+    });
+}
+function todoAgent(t) {
+  if (!t.agent) return `<span class="todo-agent"><span>${esc(L.todoUnassigned)}</span></span>`;
+  const agent = t.agent.split(':')[0];
+  return `<button class="todo-agent" data-agent-of="${t.id}" title="${esc(t.agent)}">${agentLogo(agent)}<span>${esc(t.agentName || AGENT_NAME[agent] || agent)}</span></button>`;
+}
+// setHTML keeps the list (and an open status menu) as it is until something in it changes.
+function renderTodos() {
+  const todos = state.data.todos;
+  const ok = Array.isArray(todos);
+  document.getElementById('todoForm').hidden = !ok;
+  document.getElementById('todoCount').textContent = ok && todos.length ? `${todos.filter((t) => t.status !== 'done').length}/${todos.length}` : '';
+  const clear = document.getElementById('todoClear');
+  clear.textContent = L.todoClearDone;
+  clear.hidden = !ok || !todos.some((t) => t.status === 'done');
+  if (!ok) {
+    if (state.loaded) { todoNote.className = 'todo-note'; todoNote.textContent = L.todoUnavailable; todoNote.hidden = false; }
+    setHTML(todoList, '');
+    return;
+  }
+  const when = new Intl.DateTimeFormat(L.html, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const sorted = [...todos].sort((a, b) => TODO_ORDER[a.status] - TODO_ORDER[b.status] || a.id - b.id);
+  setHTML(todoList, sorted.map((t) => `<li data-st="${esc(t.status)}">`
+    + `<div class="todo-row"><select class="btn todo-st" data-id="${t.id}" aria-label="${esc(t.text)}">${TODO_STATUSES.map((k) => `<option value="${k}"${k === t.status ? ' selected' : ''}>${esc(L[TODO_LABEL[k]])}</option>`).join('')}</select>`
+    + `<span class="todo-text" title="${esc(t.text)}">${esc(t.text)}</span></div>`
+    + `<div class="todo-meta">${todoAgent(t)}<span>${esc(L.todoCreated)} ${esc(when.format(t.createdAt))}</span><span>${esc(L.todoUpdated)} ${esc(when.format(t.updatedAt))}</span>`
+    + `<button class="todo-del" data-del="${t.id}">${esc(L.todoDelete)}</button></div></li>`).join(''));
+}
+document.getElementById('todoForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = document.getElementById('todoInput');
+  const text = input.value.trim(); if (!text) return;
+  todoOp({ op: 'add', text }).then((ok) => { if (ok) input.value = ''; });
+});
+todoList.addEventListener('change', (e) => {
+  const c = e.target.closest('select[data-id]'); if (!c) return;
+  // A refused change puts the menu back to what the server has.
+  todoOp({ op: 'status', id: Number(c.dataset.id), status: c.value }).then((ok) => { if (!ok) { shownHTML.delete(todoList); renderTodos(); } });
+});
+todoList.addEventListener('click', (e) => {
+  const a = e.target.closest('[data-agent-of]');
+  if (a) return confirmUnassign((state.data.todos || []).find((x) => x.id === Number(a.dataset.agentOf)));
+  const b = e.target.closest('[data-del]'); if (!b) return;
+  const t = (state.data.todos || []).find((x) => x.id === Number(b.dataset.del));
+  if (!t) return;
+  // An unfinished one is asked about twice.
+  const yes = t.status === 'done'
+    ? confirm(L.todoConfirmDelete(t.text))
+    : confirm(L.todoConfirmDeleteOpen(t.text, L[TODO_LABEL[t.status]])) && confirm(L.todoConfirmDeleteAgain(t.text));
+  if (yes) todoOp({ op: 'delete', id: t.id });
+});
+document.getElementById('todoClear').addEventListener('click', () => {
+  const n = (state.data.todos || []).filter((t) => t.status === 'done').length;
+  if (n && confirm(L.todoConfirmClearDone(n))) todoOp({ op: 'deleteDone' });
+});
+// While the question is up, the agent glows in the office if it is on the
+// floor. confirm() holds the page, so the glow gets two frames to be drawn first.
+function confirmUnassign(t) {
+  if (!t || !t.agent) return;
+  const lit = !!office && office.present(t.agent);
+  if (lit) office.highlightKey = t.agent;
+  const ask = () => {
+    const yes = confirm(L.todoConfirmUnassign(t.agentName || t.agent, t.text));
+    if (office) office.highlightKey = null;
+    if (yes) todoOp({ op: 'assign', id: t.id, agent: '' });
+  };
+  if (lit) requestAnimationFrame(() => requestAnimationFrame(ask));
+  else ask();
+}
+// The pinned office card: the agent's to-dos (× takes one back) and a menu
+// of the open ones to assign; one assigned elsewhere moves to this agent.
+function todoPicker(s) {
+  const todos = state.data.todos;
+  if (!Array.isArray(todos)) return '';
+  const mine = todos.filter((t) => t.agent === s.key);
+  const open = todos.filter((t) => t.agent !== s.key && t.status !== 'done');
+  const rows = mine.map((t) => `<li data-st="${esc(t.status)}"><span class="todo-text" title="${esc(t.text)}">${esc(t.text)}</span><small>${esc(L[TODO_LABEL[t.status]])}</small>`
+    + `<button class="todo-del" data-unassign="${t.id}" title="${esc(L.todoUnassign)}" aria-label="${esc(L.todoUnassign)}">×</button></li>`).join('');
+  const pick = open.length ? `<select class="btn" data-assign="${esc(s.key)}" aria-label="${esc(L.todoAssign)}"><option value="">${esc(L.todoAssign)}</option>`
+    + `${open.map((t) => `<option value="${t.id}">${esc(t.text)}${t.agentName ? ` · ${esc(t.agentName)}` : ''}</option>`).join('')}</select>` : '';
+  return `<div class="tp-head">${esc(L.todo)}${s.name ? ` · ${esc(s.name)}` : ''}</div>${rows ? `<ul>${rows}</ul>` : ''}${pick || (rows ? '' : `<p>${esc(L.todoNoOpen)}</p>`)}`;
+}
+tip.addEventListener('change', (e) => {
+  const c = e.target.closest('select[data-assign]'); if (!c || !c.value) return;
+  todoOp({ op: 'assign', id: Number(c.value), agent: c.dataset.assign });
+});
+tip.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-unassign]'); if (!b) return;
+  todoOp({ op: 'assign', id: Number(b.dataset.unassign), agent: '' });
+});
 
 // ---- detail dialog: one session's whole last prompt and reply, whatever its
 // status, opened by the "Details" button on a list card or a pinned office card.
@@ -1257,17 +1455,18 @@ const verEl = document.getElementById('ver');
 let verInfo = null;
 function renderVersion() {
   if (!verInfo) return;
-  // the running version is the hover tooltip (data-ver) of whatever is shown
-  const ver = `v${esc(verInfo.version)}`;
+  // the running version sits in the settings panel, next to check / update
+  document.getElementById('verGroup').hidden = false;
+  document.getElementById('verNum').textContent = `v${verInfo.version}`;
   let html;
   if (verInfo.updateAvailable) {
     html = verInfo.canUpdate
-      ? `<button id="updBtn" data-ver="${ver}">⬆ ${esc(L.update)} v${esc(verInfo.latest)}</button>`
-      : `<span data-ver="${ver}">${esc(L.gitPull)} → v${esc(verInfo.latest)}</span>`;
+      ? `<button class="btn" id="updBtn">⬆ ${esc(L.update)} v${esc(verInfo.latest)}</button>`
+      : `<span>${esc(L.gitPull)} → v${esc(verInfo.latest)}</span>`;
   } else {
-    html = `<button id="chkBtn" data-ver="${ver}" aria-describedby="verNote">${esc(L.checkUpdate)}</button>`;
+    html = `<button class="btn" id="chkBtn">${esc(L.checkUpdate)}</button>`;
   }
-  verEl.innerHTML = html + `<span id="verNote" hidden>${ver}</span>`;
+  verEl.innerHTML = html;
   // a second, more visible way in, next to the title
   const top = document.getElementById('newVer');
   top.hidden = !(verInfo.updateAvailable && verInfo.canUpdate);

@@ -60,6 +60,7 @@ type Options struct {
 	Stop    bool
 	Update  bool
 	TVDir   string
+	DB      string // office.db for to-dos and agent names (todo.go); "" turns both off
 }
 
 // View is one session as the page sees it. Pointers render as null when unset.
@@ -91,12 +92,14 @@ type View struct {
 	ContextTokens   *int64   `json:"contextTokens"`   // context size of the latest request
 	CompactAt       *int64   `json:"compactAt"`       // where the CLI compacts on its own
 	Alerts          []string `json:"alerts"`          // "compact", "longTurn": shown apart from the status
+	Name            *string  `json:"name"`            // a person's name as a loose alias for the key (todo.go)
 }
 
 type Snapshot struct {
 	Now      int64   `json:"now"`
 	Lang     *string `json:"lang"`
 	Sessions []View  `json:"sessions"`
+	Todos    []Todo  `json:"todos"` // null when office.db can't be used
 }
 
 func systemTempDirs() []string {
@@ -301,6 +304,7 @@ type Server struct {
 	shutdown func()
 	restart  func()
 	stats    *statsScanner
+	store    *officeStore
 
 	mu      sync.Mutex
 	clients map[chan string]struct{}
@@ -319,8 +323,20 @@ func NewServer(src Source, opts Options, updater *Updater, onShutdown, onRestart
 		clients:  map[chan string]struct{}{},
 		done:     make(chan struct{}),
 	}
+	if opts.DB != "" {
+		s.store = openOfficeStore(opts.DB)
+	}
 	go s.broadcastLoop()
 	return s
+}
+
+// snap is the snapshot plus names and to-dos from office.db.
+func (s *Server) snap() Snapshot {
+	snap := snapshot(s.src, s.opts)
+	if s.store != nil {
+		s.store.decorate(&snap)
+	}
+	return snap
 }
 
 func (s *Server) Close() {
@@ -342,7 +358,7 @@ func (s *Server) closeClients() {
 }
 
 func (s *Server) push(force bool) {
-	body, err := json.Marshal(snapshot(s.src, s.opts))
+	body, err := json.Marshal(s.snap())
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "snapshot failed:", err)
 		return
@@ -443,7 +459,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		serveEmbedded(w, "assets", rel, "", "no-cache")
 
 	case p == "/api/sessions":
-		writeJSON(w, 200, snapshot(s.src, s.opts), false)
+		writeJSON(w, 200, s.snap(), false)
 
 	case p == "/api/session":
 		d, ok := sessionDetail(s.src, q.Get("key"), s.opts.Privacy)
@@ -533,6 +549,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case p == "/api/launch/models":
 		writeJSON(w, 200, map[string]any{"models": s.launchModels(q.Get("agent"))}, true)
 
+	case p == "/api/todos" && r.Method == "POST":
+		// Same guard as launch: web pages can't send this header cross-site.
+		if header != "todo" {
+			w.WriteHeader(403)
+			return
+		}
+		s.serveTodo(w, r)
+
 	default:
 		w.WriteHeader(404)
 	}
@@ -548,7 +572,7 @@ func (s *Server) serveEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(200)
-	first, _ := json.Marshal(snapshot(s.src, s.opts))
+	first, _ := json.Marshal(s.snap())
 	fmt.Fprintf(w, "data: %s\n\n", first)
 	flusher.Flush()
 

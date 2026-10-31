@@ -556,6 +556,7 @@
       this.visible = true;
       this.hit = [];
       this.hoverKey = null;
+      this.highlightKey = null; // set by the page (a to-do's agent): glows until cleared
       this.t = performance.now();
       this.pal = palette();
       this.plan = this.buildPlan(0);
@@ -1320,6 +1321,8 @@
     }
 
     setVisible(v) { this.visible = v; if (v) this.resize(); }
+    // On the floor: shown and not walking out.
+    present(key) { const p = this.people.get(key); return !!p && !p.leaving; }
 
     // ------------------------------------------------------------ camera / input
 
@@ -2027,7 +2030,7 @@
 
       const headTop = y + (hy - 8) * sc;
       this.hit.push({ key: p.key, x0: x - 13, x1: x + 13, y0: headTop - 22, y1: fb.y + 4 });
-      return { x, y: headTop, act: st.act };
+      return { x, y: headTop, act: st.act, foot: fb.y };
     }
 
     bubble(p, at) {
@@ -2044,8 +2047,10 @@
       c.font = font(600, 10);
       // Finished agents wear everything over the head at 75% so the ones
       // working or waiting on you stand out; hovering brings it back to full.
-      const hover = this.hoverKey === p.key;
+      const glow = this.highlightKey === p.key;
+      const hover = this.hoverKey === p.key || glow;
       const quiet = (st === 'done' || st === 'idle') && !hover;
+      if (glow) this.glow(x, at.y, at.foot ?? at.y + 40, t);
       c.save();
       if (quiet) { c.translate(x, at.y); c.scale(0.75, 0.75); c.translate(-x, -at.y); }
 
@@ -2183,6 +2188,43 @@
         if (!text) continue;
         right -= this.chip(text, right, at.y + 2, ALERT_RING, 'right') + 3;
       }
+      c.restore();
+    }
+
+    // For the agent the page points at: a pulsing halo and a column of light
+    // from head to feet, a ring on the floor and an arrow bouncing over the tag.
+    glow(x, top, foot, t) {
+      const c = this.ctx;
+      const gold = (a) => `rgba(255, 200, 60, ${a})`;
+      const cy = (top + foot) / 2, ry = Math.max(34, (foot - top) / 2 + 20), rx = Math.max(26, ry * 0.7);
+      const a = 0.75 + 0.25 * Math.sin(t * 6);
+      c.save();
+      const beam = c.createLinearGradient(0, top - 70, 0, foot);
+      beam.addColorStop(0, gold(0));
+      beam.addColorStop(1, gold(0.35 * a));
+      c.fillStyle = beam;
+      c.fillRect(x - rx * 0.6, top - 70, rx * 1.2, foot - top + 70);
+      c.translate(x, cy);
+      c.scale(rx / ry, 1);
+      const g = c.createRadialGradient(0, 0, 0, 0, 0, ry);
+      g.addColorStop(0, gold(0.7 * a));
+      g.addColorStop(0.55, gold(0.4 * a));
+      g.addColorStop(1, gold(0));
+      c.fillStyle = g;
+      c.beginPath(); c.arc(0, 0, ry, 0, Math.PI * 2); c.fill();
+      c.restore();
+      c.save();
+      c.strokeStyle = gold(a);
+      c.lineWidth = 3;
+      c.shadowColor = gold(1);
+      c.shadowBlur = 16;
+      c.beginPath(); c.ellipse(x, foot, rx, rx * 0.5, 0, 0, Math.PI * 2); c.stroke();
+      const ay = top - 46 - Math.abs(Math.sin(t * 5)) * 8;
+      c.fillStyle = gold(1);
+      c.strokeStyle = 'rgba(80, 50, 0, 0.8)';
+      c.lineWidth = 1.5;
+      c.beginPath(); c.moveTo(x - 9, ay - 10); c.lineTo(x + 9, ay - 10); c.lineTo(x, ay + 2); c.closePath();
+      c.fill(); c.stroke();
       c.restore();
     }
 

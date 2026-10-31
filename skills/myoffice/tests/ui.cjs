@@ -202,10 +202,10 @@ async function drawnLogos(target) {
   assert.match(await page.title(),/Agents Office$/);
   assert.equal(await page.locator('h1').count(),0);
   assert.equal(await page.evaluate(()=>document.querySelector('#summary').getBoundingClientRect().left>document.querySelector('.controls').getBoundingClientRect().right),true);
-  await page.waitForSelector('#chkBtn');
-  assert.match(await page.locator('#chkBtn').getAttribute('data-ver'),/^v\d/);
+  await page.waitForSelector('#settingsPanel #chkBtn',{state:'attached'});
+  assert.match(await page.locator('#verNum').textContent(),/^v\d/);
   assert.match(await page.locator('#clock').innerText(),/\d/);
-  check('no title row: controls left, counts right, version on the check button, clock in the corner');
+  check('no title row: controls left, counts right, version and check button in settings, clock in the corner');
   assert.deepEqual(await page.locator('#summary button.chip').evaluateAll(bs=>bs.map(b=>b.dataset.g)),['needsYou','error','working','finished','idle']);
   assert.match(await page.locator('#summary button.chip[data-g="finished"]').innerText(),/1$/);
   await page.click('#summary button.chip[data-g="finished"]');
@@ -257,6 +257,81 @@ async function drawnLogos(target) {
   await page.locator('#officeResize').dblclick();
   assert.equal(await officeW(),w0);assert.equal(await officeH(),h0);
   check('the office can be dragged wider and taller than the window');
+  assert.equal(await page.locator('#todo').isVisible(),true);
+  const widths=()=>page.evaluate(()=>[document.getElementById('office').offsetWidth,document.getElementById('todo').offsetWidth]);
+  // 65:35 would leave the list under its minimum (one line per to-do) inside the 1180px page.
+  const [ow,tw]=await widths();assert.equal(tw,410,'the list stops at its minimum width');assert.ok(ow/tw>1.6&&ow/tw<65/35,`office:list ${ow}:${tw}`);
+  // The page's event stream is stubbed: to-do changes go to the demo server for
+  // real, then the test feeds its snapshot (demo sessions, names, to-dos) in.
+  const syncTodos=()=>page.evaluate(async()=>{const d=await (await fetch('/api/sessions')).json();onData({now:Date.now(),sessions:d.sessions,todos:d.todos});return d;});
+  const todoPost=(act)=>Promise.all([page.waitForResponse(r=>r.url().endsWith('/api/todos')),act()]).then(syncTodos);
+  const demo=await syncTodos();
+  assert.ok(demo.sessions.length>3&&demo.sessions.every(s=>/^[A-Z][a-z]+ [A-Z][a-z]+$/.test(s.name)),'every demo session has a name');
+  const byDay={};for(const s of demo.sessions){const d=new Date(s.startedAt||0).toDateString();(byDay[d]=byDay[d]||new Set()).add(s.name);}
+  assert.equal(Object.values(byDay).reduce((n,set)=>n+set.size,0),demo.sessions.length,'names repeat within a day');
+  assert.deepEqual(demo.todos,[]);
+  for(const t of ['Ship the list','Write the note']){await page.fill('#todoInput',t);await todoPost(()=>page.press('#todoInput','Enter'));}
+  assert.deepEqual(await page.locator('#todoList .todo-text').allTextContents(),['Ship the list','Write the note']);
+  assert.deepEqual(await page.locator('#todoList select').evaluateAll(ss=>ss.map(s=>s.value)),['todo','todo']);
+  assert.equal(await page.locator('#todoList .todo-agent').first().textContent(),'Unassigned');
+  assert.equal(await page.locator('#todoList .todo-meta').first().evaluate(el=>/Created .+Updated /.test(el.textContent)),true);
+  // Clicking an agent pins its card: its name, and a menu to assign a to-do.
+  const agent=demo.sessions.find(s=>!s.subagent);
+  await page.evaluate(k=>officeOpts.onHover(state.data.sessions.find(s=>s.key===k),{x:120,y:120},true),agent.key);
+  assert.equal(await page.locator('#tip .alias').textContent(),agent.name);
+  const first=(await page.evaluate(()=>state.data.todos))[0];
+  await todoPost(()=>page.selectOption('#tip select[data-assign]',String(first.id)));
+  const assigned=(await page.evaluate(()=>state.data.todos)).find(t=>t.id===first.id);
+  assert.equal(assigned.agent,agent.key);assert.equal(assigned.agentName,agent.name);assert.equal(assigned.status,'doing');
+  assert.deepEqual(await page.locator('#tip .tip-todo li .todo-text').allTextContents(),['Ship the list']);
+  assert.ok((await page.locator('#todoList li[data-st="doing"] .todo-agent').textContent()).includes(agent.name));
+  await page.evaluate(()=>hideTip());
+  // confirm() is stubbed from here on: each call takes the next answer and
+  // notes the agent the office lights up while it is asked.
+  await page.evaluate(()=>{window.__confirm=window.confirm;window.__asked=[];window.__answers=[];window.confirm=(m)=>{__asked.push([m,office.highlightKey]);return !!__answers.shift();};});
+  const ask=async(answers,n,act)=>{await page.evaluate(a=>{__asked=[];__answers=a;},answers);await act();await page.waitForFunction(n=>__asked.length===n,n);return page.evaluate(()=>__asked);};
+  // Clicking the assigned agent's name asks to take the to-do back; the agent glows meanwhile.
+  const byAgent='#todoList li[data-st="doing"] button.todo-agent';
+  assert.equal(await page.evaluate(k=>office.present(k),agent.key),true);
+  let asked=await ask([false],1,()=>page.click(byAgent));
+  assert.ok(asked[0][0].includes(agent.name)&&asked[0][0].includes('Ship the list'));
+  assert.equal(asked[0][1],agent.key,'the agent glows while asked');
+  assert.equal(await page.evaluate(()=>office.highlightKey),null);
+  assert.equal((await page.evaluate(()=>state.data.todos)).find(t=>t.id===first.id).agent,agent.key);
+  assert.equal(await page.evaluate(k=>{let n=0;const g=office.glow;office.glow=function(...a){n++;return g.apply(this,a);};office.highlightKey=k;office.frame(performance.now());office.highlightKey=null;office.glow=g;return n;},agent.key),1,'the glow is drawn');
+  await ask([true],1,()=>todoPost(()=>page.click(byAgent)));
+  assert.equal((await page.evaluate(()=>state.data.todos)).find(t=>t.id===first.id).agent,null);
+  await todoPost(()=>page.selectOption('#todoList li:nth-child(2) select','done'));
+  // Item and meta are one line each, Delete included, at the minimum width.
+  assert.ok(await page.locator('#todoList li').evaluateAll(ls=>ls.every(li=>[...li.children].every(el=>el.scrollWidth<=el.clientWidth&&el.offsetHeight<=26))),'a to-do wraps');
+  // Every to-do has Delete; an unfinished one is asked about twice.
+  assert.equal(await page.locator('#todoList [data-del]').count(),2);
+  const openDel='#todoList li[data-st="todo"] [data-del]';
+  asked=await ask([true,false],2,()=>page.click(openDel));
+  assert.ok(asked[0][0].includes('Not started')&&asked[1][0].includes('Ship the list'));
+  assert.equal(await page.locator('#todoList li').count(),2);
+  // The head deletes every finished one after one confirm.
+  assert.equal(await page.locator('#todoClear').textContent(),'Delete finished');
+  await ask([true],1,()=>todoPost(()=>page.click('#todoClear')));
+  assert.deepEqual(await page.locator('#todoList .todo-text').allTextContents(),['Ship the list']);
+  assert.equal(await page.locator('#todoClear').isVisible(),false);
+  await ask([true,true],2,()=>todoPost(()=>page.click(openDel)));
+  assert.equal(await page.locator('#todoList li').count(),0);
+  await page.evaluate(()=>{window.confirm=window.__confirm;});
+  // Back to the test's own sessions in a fresh office (the demo team would still be walking out).
+  await page.evaluate(s=>{onData({now:Date.now(),sessions:s});window.__oldOffice=office;document.getElementById('refreshOffice').click();},sessions);
+  await page.waitForFunction(()=>office&&office!==window.__oldOffice&&office.framesShown>4);
+  await stable(page);
+  await openSettings(page);await page.uncheck('#showTodo');
+  assert.equal(await page.locator('#todo').isVisible(),false);
+  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('wmad.showTodo'))),false);
+  await page.check('#showTodo');
+  assert.equal(await page.locator('#todo').isVisible(),true);
+  check('to-dos live on the server with status, agent and times; a pinned agent card assigns one, clicking the name takes it back while the agent glows; any deletes (unfinished after two confirms), finished ones all at once; settings hides the list');
+  await page.waitForFunction(()=>document.getElementById('settingsPanel').style.maxHeight!=='');
+  assert.ok(await page.evaluate(()=>{const p=document.getElementById('settingsPanel');return Math.abs(innerHeight-12-p.getBoundingClientRect().top-parseFloat(p.style.maxHeight))<=1;}));
+  await page.keyboard.press('Escape');
+  check('the settings panel runs down to the bottom of the window');
   await page.click('#summary button.chip[data-g="working"]');
   assert.equal(await page.locator('#main section h2').evaluateAll(hs=>hs.map(h=>h.textContent.replace(/\s*\d+$/,''))).then(a=>a.includes('Working')),false);
   await page.click('#summary button.chip[data-g="working"]');

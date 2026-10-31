@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -236,6 +237,15 @@ func main() {
 		src = NewWatcher(o.Hours)
 	}
 	src.Start()
+
+	// To-dos and agent names (todo.go); the demo keeps its own in a temp folder.
+	if o.Demo {
+		if dir, err := os.MkdirTemp("", "wmad-demo-"); err == nil {
+			o.DB = filepath.Join(dir, "office.db")
+		}
+	} else {
+		o.DB = filepath.Join(userHome(), OfficeDB)
+	}
 
 	var httpServer *http.Server
 	var app *Server
