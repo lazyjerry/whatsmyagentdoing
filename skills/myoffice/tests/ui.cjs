@@ -367,7 +367,7 @@ async function drawnLogos(target) {
    try {office.frame(performance.now());} finally {ctx.fillText=original;}
    return found.sort();
   }),['75m','ctx 90%']);
-  assert.deepEqual((await page.locator('#legend .alert-key').allInnerTexts()).map(t=>t.replace(/\s+/g,' ')),['ctx % Near auto-compact','min Long turn']);
+  assert.deepEqual((await page.locator('#legend .alert-key').allInnerTexts()).map(t=>t.replace(/\s+/g,' ')),['ctx % Near auto-compact 1','min Long turn 1']);
   await page.evaluate(()=>officeOpts.onHover(state.data.sessions[0],{x:40,y:40},false));
   assert.deepEqual((await page.locator('#tip .alert').allInnerTexts()).map(t=>t.replace(/\s+/g,' ')),['ctx 90% Near auto-compact','75m Long turn']);
   assert.equal(await page.locator('#tip .meta dd').nth(3).innerText(),'90% (330k / 367k)');
