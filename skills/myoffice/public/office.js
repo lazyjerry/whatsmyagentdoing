@@ -2042,6 +2042,12 @@
       c.textBaseline = 'middle';
       const font = (w, px) => `${w} ${px}px ui-sans-serif, system-ui, -apple-system, "PingFang TC", "Apple Color Emoji", sans-serif`;
       c.font = font(600, 10);
+      // Finished agents wear everything over the head at 75% so the ones
+      // working or waiting on you stand out; hovering brings it back to full.
+      const hover = this.hoverKey === p.key;
+      const quiet = (st === 'done' || st === 'idle') && !hover;
+      c.save();
+      if (quiet) { c.translate(x, at.y); c.scale(0.75, 0.75); c.translate(-x, -at.y); }
 
       const badge = this.showAgent && AGENT_BADGES[s.agent];
       const pill = (text, fg, bg, yy, alpha = 1, identify = false) => {
@@ -2163,12 +2169,12 @@
         }
       }
 
-      const hover = this.hoverKey === p.key;
       if (!s.subagent || hover) {
         tag(this.label(s), this.sublabel(s), top - 11, busy || hover ? 1 : 0.7);
       } else if (badge) {
         this.agentBadge(badge, x, top - 11);
       }
+      c.restore();
       // Warning chips sit left of the head and never move, apart from the
       // status bubble (above, right of the head).
       let right = x - 12;
