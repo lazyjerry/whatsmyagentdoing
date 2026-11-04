@@ -100,12 +100,12 @@ func TestTodoLifecycle(t *testing.T) {
 		t.Fatalf("assign: %d %v", code, out)
 	}
 	got := s.snap().Todos[0]
-	if got.Status != "doing" || got.Agent == nil || *got.Agent != "claude:a" || got.AgentName == nil || *got.AgentName == "" {
+	if got.Status != "doing" || len(got.Agents) != 1 || got.Agents[0].Key != "claude:a" || got.Agents[0].Name == nil || *got.Agents[0].Name == "" {
 		t.Fatalf("after assign: %+v", got)
 	}
 	// Assigned mid-turn: the running turn counts, so it finishing finishes the to-do.
-	if *got.AssignedAt != working.TurnStartedAt {
-		t.Fatalf("assignedAt %d, want the turn start %d", *got.AssignedAt, working.TurnStartedAt)
+	if got.Agents[0].AssignedAt != working.TurnStartedAt {
+		t.Fatalf("assignedAt %d, want the turn start %d", got.Agents[0].AssignedAt, working.TurnStartedAt)
 	}
 	finished := working
 	finished.Status, finished.LastEventAt = "done", now
@@ -124,9 +124,17 @@ func TestTodoLifecycle(t *testing.T) {
 	if code, _ := postTodo(s, body("assign", `,"agent":"claude:gone"`), true); code != 400 {
 		t.Fatal("assigning to a missing agent was accepted")
 	}
-	postTodo(s, body("assign", `,"agent":""`), true)
-	if got := s.snap().Todos[0]; got.Agent != nil || got.Status != "todo" {
+	if code, _ := postTodo(s, body("assign", `,"agent":""`), true); code != 400 {
+		t.Fatal("assigning to no agent was accepted")
+	}
+	if code, out := postTodo(s, body("unassign", `,"agent":"claude:a"`), true); code != 200 {
+		t.Fatalf("unassign: %d %v", code, out)
+	}
+	if got := s.snap().Todos[0]; len(got.Agents) != 0 || got.Status != "todo" {
 		t.Fatalf("after taking it back: %+v", got)
+	}
+	if code, _ := postTodo(s, body("unassign", `,"agent":"claude:a"`), true); code != 400 {
+		t.Fatal("taking back an agent that isn't on the to-do was accepted")
 	}
 	postTodo(s, body("status", `,"status":"done"`), true)
 
@@ -171,6 +179,115 @@ func TestTodoDeleteAnyStatusAndAllDone(t *testing.T) {
 	}
 	if reopened := openOfficeStore(db); len(reopened.todos) != 1 || reopened.todos[0].Text != "d" {
 		t.Fatalf("reopened: %+v", reopened.todos)
+	}
+}
+
+func todoKeys(td Todo) []string {
+	keys := []string{}
+	for _, a := range td.Agents {
+		keys = append(keys, a.Key)
+	}
+	return keys
+}
+
+func TestTodoManyAgentsOneTodoEach(t *testing.T) {
+	needSqlite(t)
+	now := time.Now().UnixMilli()
+	a := Session{Agent: "claude", ID: "a", Status: "thinking", StartedAt: now - 3_600_000, TurnStartedAt: now - 60_000, LastEventAt: now - 1000}
+	b := Session{Agent: "codex", ID: "b", Status: "thinking", StartedAt: now - 3_600_000, TurnStartedAt: now - 30_000, LastEventAt: now - 1000}
+	src := newFakeSource(a, b)
+	db := filepath.Join(t.TempDir(), "office.db")
+	s := newTestServer(t, src, Options{DB: db}, nil, nil)
+	postTodo(s, `{"op":"add","text":"x"}`, true)
+	postTodo(s, `{"op":"add","text":"y"}`, true)
+	x, y := s.snap().Todos[0].ID, s.snap().Todos[1].ID
+	assign := func(id int64, key string) {
+		t.Helper()
+		if code, out := postTodo(s, `{"op":"assign","id":`+itoa(id)+`,"agent":"`+key+`"}`, true); code != 200 {
+			t.Fatalf("assign %s: %d %v", key, code, out)
+		}
+	}
+	keys := func(i int) string { return strings.Join(todoKeys(s.snap().Todos[i]), ",") }
+
+	// Many agents on one to-do.
+	assign(x, "claude:a")
+	assign(x, "codex:b")
+	if keys(0) != "claude:a,codex:b" || s.snap().Todos[0].Status != "doing" {
+		t.Fatalf("x after two assigns: %+v", s.snap().Todos[0])
+	}
+	// One to-do per agent: assigning elsewhere moves it.
+	assign(y, "claude:a")
+	if keys(0) != "codex:b" || keys(1) != "claude:a" || s.snap().Todos[0].Status != "doing" {
+		t.Fatalf("after moving a: %+v", s.snap().Todos)
+	}
+	assign(y, "codex:b")
+	if keys(0) != "" || s.snap().Todos[0].Status != "todo" || keys(1) != "claude:a,codex:b" {
+		t.Fatalf("after moving b, x has nobody and is not doing: %+v", s.snap().Todos)
+	}
+
+	// Done only once every agent on it has finished.
+	aDone := a
+	aDone.Status, aDone.LastEventAt = "done", now
+	src.set(aDone, b)
+	if got := s.snap().Todos[1].Status; got != "doing" {
+		t.Fatalf("one of two agents finished, to-do is %q", got)
+	}
+	bDone := b
+	bDone.Status, bDone.LastEventAt = "done", now
+	src.set(aDone, bDone)
+	if got := s.snap().Todos[1].Status; got != "done" {
+		t.Fatalf("both agents finished, to-do is %q", got)
+	}
+
+	reopened := openOfficeStore(db)
+	if len(reopened.todos) != 2 || len(reopened.todos[0].Agents) != 0 || strings.Join(todoKeys(reopened.todos[1]), ",") != "claude:a,codex:b" {
+		t.Fatalf("reopened: %+v", reopened.todos)
+	}
+	// Deleting a to-do frees its agents.
+	postTodo(s, `{"op":"delete","id":`+itoa(y)+`}`, true)
+	var rows []struct {
+		N int `json:"n"`
+	}
+	if err := sqliteWrite(db, "SELECT COUNT(*) AS n FROM todo_agents;", &rows); err != nil || len(rows) != 1 || rows[0].N != 0 {
+		t.Fatalf("todo_agents after delete: %v %+v", err, rows)
+	}
+}
+
+// A database from before todo_agents: each to-do's one agent moves over, an
+// agent on two to-dos keeps the later one.
+func TestTodoAgentsMoveFromTheOldColumns(t *testing.T) {
+	needSqlite(t)
+	db := filepath.Join(t.TempDir(), "office.db")
+	old := `CREATE TABLE todos (id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'todo',
+  agent_key TEXT, agent_name TEXT, assigned_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+INSERT INTO todos VALUES (1, 'old', 'done', 'claude:a', 'Amy Lin', 100, 1, 200);
+INSERT INTO todos VALUES (2, 'new', 'doing', 'claude:a', 'Amy Lin', 300, 1, 400);
+INSERT INTO todos VALUES (3, 'other', 'doing', 'codex:b', NULL, NULL, 1, 500);`
+	if err := sqliteWrite(db, old, nil); err != nil {
+		t.Fatal(err)
+	}
+	st := openOfficeStore(db)
+	if !st.available() || len(st.todos) != 3 {
+		t.Fatalf("store: %+v", st.todos)
+	}
+	got := []string{}
+	for _, td := range st.todos {
+		got = append(got, strings.Join(todoKeys(td), ","))
+	}
+	if strings.Join(got, "|") != "|claude:a|codex:b" {
+		t.Fatalf("agents after the move: %q", got)
+	}
+	if a := st.todos[1].Agents[0]; a.AssignedAt != 300 || a.Name == nil || *a.Name != "Amy Lin" {
+		t.Fatalf("moved agent: %+v", a)
+	}
+	if a := st.todos[2].Agents[0]; a.AssignedAt != 500 || a.Name != nil {
+		t.Fatalf("no assigned_at falls back to updated_at: %+v", a)
+	}
+	var left []struct {
+		N int `json:"n"`
+	}
+	if err := sqliteWrite(db, "SELECT COUNT(*) AS n FROM todos WHERE agent_key IS NOT NULL;", &left); err != nil || len(left) != 1 || left[0].N != 0 {
+		t.Fatalf("old columns not cleared: %v %+v", err, left)
 	}
 }
 

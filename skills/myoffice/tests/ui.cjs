@@ -282,32 +282,55 @@ async function drawnLogos(target) {
   const first=(await page.evaluate(()=>state.data.todos))[0];
   await todoPost(()=>page.selectOption('#tip select[data-assign]',String(first.id)));
   const assigned=(await page.evaluate(()=>state.data.todos)).find(t=>t.id===first.id);
-  assert.equal(assigned.agent,agent.key);assert.equal(assigned.agentName,agent.name);assert.equal(assigned.status,'doing');
+  const keysOf=(id)=>page.evaluate(id=>state.data.todos.find(t=>t.id===id).agents.map(a=>a.key),id);
+  assert.deepEqual(assigned.agents.map(a=>[a.key,a.name]),[[agent.key,agent.name]]);assert.equal(assigned.status,'doing');
   assert.deepEqual(await page.locator('#tip .tip-todo li .todo-text').allTextContents(),['Ship the list']);
   assert.ok((await page.locator('#todoList li[data-st="doing"] .todo-agent').textContent()).includes(agent.name));
+  // Many agents on one to-do; an agent on another to-do moves there (one at a time).
+  const second=(await page.evaluate(()=>state.data.todos))[1];
+  const agent2=demo.sessions.find(s=>!s.subagent&&s.key!==agent.key);
+  const pin=(k)=>page.evaluate(k=>officeOpts.onHover(state.data.sessions.find(s=>s.key===k),{x:120,y:120},true),k);
+  await pin(agent2.key);
+  await todoPost(()=>page.selectOption('#tip select[data-assign]',String(first.id)));
+  assert.deepEqual(await keysOf(first.id),[agent.key,agent2.key]);
+  assert.equal(await page.locator('#todoList li[data-st="doing"] button.todo-agent').count(),2);
+  await pin(agent2.key);
+  assert.ok((await page.locator('#tip select[data-assign] option').allTextContents()).includes('Write the note'));
+  await todoPost(()=>page.selectOption('#tip select[data-assign]',String(second.id)));
+  assert.deepEqual(await keysOf(first.id),[agent.key]);assert.deepEqual(await keysOf(second.id),[agent2.key]);
   await page.evaluate(()=>hideTip());
-  // confirm() is stubbed from here on: each call takes the next answer and
-  // notes the agent the office lights up while it is asked.
-  await page.evaluate(()=>{window.__confirm=window.confirm;window.__asked=[];window.__answers=[];window.confirm=(m)=>{__asked.push([m,office.highlightKey]);return !!__answers.shift();};});
+  // × next to a name takes that agent off; nobody left, the to-do is no longer in progress.
+  await todoPost(()=>page.click(`#todoList [data-unassign="${second.id}"][data-agent="${agent2.key}"]`));
+  assert.deepEqual(await keysOf(second.id),[]);
+  assert.equal((await page.evaluate(()=>state.data.todos)).find(t=>t.id===second.id).status,'todo');
+  // confirm() is stubbed from here on: each call takes the next answer.
+  await page.evaluate(()=>{window.__confirm=window.confirm;window.__asked=[];window.__answers=[];window.confirm=(m)=>{__asked.push([m]);return !!__answers.shift();};});
   const ask=async(answers,n,act)=>{await page.evaluate(a=>{__asked=[];__answers=a;},answers);await act();await page.waitForFunction(n=>__asked.length===n,n);return page.evaluate(()=>__asked);};
-  // Clicking the assigned agent's name asks to take the to-do back; the agent glows meanwhile.
-  const byAgent='#todoList li[data-st="doing"] button.todo-agent';
+  // Clicking an agent's name spotlights it in the office, no question asked; again turns it off.
+  const byAgent=`#todoList button.todo-agent[data-spot="${agent.key}"]`;
   assert.equal(await page.evaluate(k=>office.present(k),agent.key),true);
-  let asked=await ask([false],1,()=>page.click(byAgent));
-  assert.ok(asked[0][0].includes(agent.name)&&asked[0][0].includes('Ship the list'));
-  assert.equal(asked[0][1],agent.key,'the agent glows while asked');
+  await page.click(byAgent);
+  assert.equal(await page.evaluate(()=>office.highlightKey),agent.key);
+  assert.equal(await page.locator(byAgent).getAttribute('aria-pressed'),'true');
+  assert.equal(await page.evaluate(()=>__asked.length),0,'no confirm');
+  assert.equal(await page.evaluate(()=>{let n=0;const f=office.spotAt;office.spotAt=function(...a){n++;return f.apply(this,a);};office.frame(performance.now());office.spotAt=f;return n;}),1,'the spotlight is drawn');
+  await page.click(byAgent);
   assert.equal(await page.evaluate(()=>office.highlightKey),null);
-  assert.equal((await page.evaluate(()=>state.data.todos)).find(t=>t.id===first.id).agent,agent.key);
-  assert.equal(await page.evaluate(k=>{let n=0;const g=office.glow;office.glow=function(...a){n++;return g.apply(this,a);};office.highlightKey=k;office.frame(performance.now());office.highlightKey=null;office.glow=g;return n;},agent.key),1,'the glow is drawn');
-  await ask([true],1,()=>todoPost(()=>page.click(byAgent)));
-  assert.equal((await page.evaluate(()=>state.data.todos)).find(t=>t.id===first.id).agent,null);
+  assert.deepEqual(await keysOf(first.id),[agent.key],'the spotlight leaves the assignment alone');
+  // One not on the floor gets a note instead.
+  await page.evaluate(()=>spotlight('claude:nobody','Nobody'));
+  assert.equal(await page.locator('#todoNote').textContent(),"Nobody isn't in the office right now.");
+  await page.evaluate(()=>spotlight(null));
+  assert.equal(await page.locator('#todoNote').isVisible(),false);
+  await todoPost(()=>page.click(`#todoList [data-unassign="${first.id}"][data-agent="${agent.key}"]`));
+  assert.deepEqual(await keysOf(first.id),[]);
   await todoPost(()=>page.selectOption('#todoList li:nth-child(2) select','done'));
   // Item and meta are one line each, Delete included, at the minimum width.
   assert.ok(await page.locator('#todoList li').evaluateAll(ls=>ls.every(li=>[...li.children].every(el=>el.scrollWidth<=el.clientWidth&&el.offsetHeight<=26))),'a to-do wraps');
   // Every to-do has Delete; an unfinished one is asked about twice.
   assert.equal(await page.locator('#todoList [data-del]').count(),2);
   const openDel='#todoList li[data-st="todo"] [data-del]';
-  asked=await ask([true,false],2,()=>page.click(openDel));
+  const asked=await ask([true,false],2,()=>page.click(openDel));
   assert.ok(asked[0][0].includes('Not started')&&asked[1][0].includes('Ship the list'));
   assert.equal(await page.locator('#todoList li').count(),2);
   // The head deletes every finished one after one confirm.
@@ -327,7 +350,7 @@ async function drawnLogos(target) {
   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('wmad.showTodo'))),false);
   await page.check('#showTodo');
   assert.equal(await page.locator('#todo').isVisible(),true);
-  check('to-dos live on the server with status, agent and times; a pinned agent card assigns one, clicking the name takes it back while the agent glows; any deletes (unfinished after two confirms), finished ones all at once; settings hides the list');
+  check('to-dos live on the server with status, agents and times; pinned agent cards put many agents on one, an agent moves to the to-do it is given last, × next to a name takes it off, clicking the name spotlights the agent without asking; any deletes (unfinished after two confirms), finished ones all at once; settings hides the list');
   await page.waitForFunction(()=>document.getElementById('settingsPanel').style.maxHeight!=='');
   assert.ok(await page.evaluate(()=>{const p=document.getElementById('settingsPanel');return Math.abs(innerHeight-12-p.getBoundingClientRect().top-parseFloat(p.style.maxHeight))<=1;}));
   await page.keyboard.press('Escape');

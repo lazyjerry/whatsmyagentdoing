@@ -231,18 +231,23 @@
   [data-st="done"] { --st: var(--done); }
   [data-st="paused"] { --st: var(--waiting); }
   .todo-st { flex: none; padding: 2px 4px; font-size: 11.5px; border-radius: 6px; color: var(--st); border-color: color-mix(in srgb, var(--st) 45%, var(--line)); }
-  /* One line: the name gives way (ellipsis) before the times do. */
+  /* One line each: the agents (names give way with an ellipsis), then the times and Delete. */
   .todo-meta { display: flex; align-items: center; gap: 10px; min-width: 0; white-space: nowrap; font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
   .todo-meta > span { flex: none; }
-  .todo-meta > .todo-agent { flex: 0 1 auto; min-width: 0; }
   .todo-agent { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); }
   .todo-agent > span { overflow: hidden; text-overflow: ellipsis; }
   .todo-agent .agent-logo { width: 14px; height: 14px; padding: 0; }
   .todo-del { flex: none; margin-left: auto; border: 0; background: none; color: var(--faint); font: inherit; font-size: 11px; cursor: pointer; padding: 0; }
   .todo-del:hover { color: var(--error); }
-  /* An assigned agent's name: clicking it asks to take the to-do back. */
+  /* The agents on a to-do: a name puts that agent in the office spotlight, × takes it off. */
   button.todo-agent { border: 0; background: none; font: inherit; padding: 0; cursor: pointer; }
   button.todo-agent:hover > span { color: var(--ink); text-decoration: underline; }
+  button.todo-agent[aria-pressed="true"] > span { color: var(--waiting); font-weight: 650; }
+  .todo-agents { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; white-space: nowrap; font-size: 11.5px; }
+  .todo-chip { display: inline-flex; align-items: center; gap: 2px; flex: 0 1 auto; min-width: 0; }
+  .todo-chip > .todo-agent { min-width: 0; }
+  .todo-x { flex: none; border: 0; background: none; color: var(--faint); font: inherit; font-size: 13px; line-height: 1; cursor: pointer; padding: 0 2px; }
+  .todo-x:hover { color: var(--error); }
   .todo-head .todo-del { font-size: 12px; }
   /* The pinned office card: the agent's to-dos and a menu to assign one more. */
   .tip-todo:not(:empty) { margin-top: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.18); }
@@ -1185,11 +1190,12 @@ document.getElementById('refreshOffice').addEventListener('click', () => {
 
 // ---- to-do list right of the office. The items live in office.db on the
 // server (todo.go) and come with every snapshot (state.data.todos; null when
-// the server can't keep them). Each has a status, the agent it is assigned to
-// (picked on that agent's pinned office card), and when it was created and
-// last changed. Agents finishing finish their to-dos on the server. Any can be
-// deleted after a confirm (two for an unfinished one), the finished ones all
-// at once from the head. Settings shows or hides it.
+// the server can't keep them). Each has a status, the agents on it (each
+// picked on that agent's pinned office card; an agent has one to-do at a
+// time), and when it was created and last changed. Agents finishing finish
+// their to-dos on the server. An agent's name spotlights it in the office, ×
+// takes it off. Any can be deleted after a confirm (two for an unfinished
+// one), the finished ones all at once from the head. Settings shows or hides it.
 const TODO_STATUSES = ['todo', 'doing', 'done', 'paused'];
 const TODO_LABEL = { todo: 'todoTodo', doing: 'todoDoing', done: 'todoDone', paused: 'todoPaused' };
 const TODO_ORDER = { doing: 0, todo: 1, paused: 2, done: 3 };
@@ -1206,10 +1212,18 @@ function todoOp(body) {
       return false;
     });
 }
-function todoAgent(t) {
-  if (!t.agent) return `<span class="todo-agent"><span>${esc(L.todoUnassigned)}</span></span>`;
-  const agent = t.agent.split(':')[0];
-  return `<button class="todo-agent" data-agent-of="${t.id}" title="${esc(t.agent)}">${agentLogo(agent)}<span>${esc(t.agentName || AGENT_NAME[agent] || agent)}</span></button>`;
+function todoAgentName(a) {
+  const agent = a.key.split(':')[0];
+  return a.name || AGENT_NAME[agent] || agent;
+}
+function todoAgents(t) {
+  const agents = t.agents || [];
+  if (!agents.length) return `<div class="todo-agents"><span class="todo-agent"><span>${esc(L.todoUnassigned)}</span></span></div>`;
+  return `<div class="todo-agents">${agents.map((a) => {
+    const name = todoAgentName(a);
+    return `<span class="todo-chip"><button class="todo-agent" data-spot="${esc(a.key)}" aria-pressed="${!!office && office.highlightKey === a.key}" title="${esc(L.todoSpotlight)}">${agentLogo(a.key.split(':')[0])}<span>${esc(name)}</span></button>`
+      + `<button class="todo-x" data-unassign="${t.id}" data-agent="${esc(a.key)}" title="${esc(L.todoUnassign)}" aria-label="${esc(`${L.todoUnassign}: ${name}`)}">×</button></span>`;
+  }).join('')}</div>`;
 }
 // setHTML keeps the list (and an open status menu) as it is until something in it changes.
 function renderTodos() {
@@ -1230,7 +1244,8 @@ function renderTodos() {
   setHTML(todoList, sorted.map((t) => `<li data-st="${esc(t.status)}">`
     + `<div class="todo-row"><select class="btn todo-st" data-id="${t.id}" aria-label="${esc(t.text)}">${TODO_STATUSES.map((k) => `<option value="${k}"${k === t.status ? ' selected' : ''}>${esc(L[TODO_LABEL[k]])}</option>`).join('')}</select>`
     + `<span class="todo-text" title="${esc(t.text)}">${esc(t.text)}</span></div>`
-    + `<div class="todo-meta">${todoAgent(t)}<span>${esc(L.todoCreated)} ${esc(when.format(t.createdAt))}</span><span>${esc(L.todoUpdated)} ${esc(when.format(t.updatedAt))}</span>`
+    + todoAgents(t)
+    + `<div class="todo-meta"><span>${esc(L.todoCreated)} ${esc(when.format(t.createdAt))}</span><span>${esc(L.todoUpdated)} ${esc(when.format(t.updatedAt))}</span>`
     + `<button class="todo-del" data-del="${t.id}">${esc(L.todoDelete)}</button></div></li>`).join(''));
 }
 document.getElementById('todoForm').addEventListener('submit', (e) => {
@@ -1245,8 +1260,10 @@ todoList.addEventListener('change', (e) => {
   todoOp({ op: 'status', id: Number(c.dataset.id), status: c.value }).then((ok) => { if (!ok) { shownHTML.delete(todoList); renderTodos(); } });
 });
 todoList.addEventListener('click', (e) => {
-  const a = e.target.closest('[data-agent-of]');
-  if (a) return confirmUnassign((state.data.todos || []).find((x) => x.id === Number(a.dataset.agentOf)));
+  const a = e.target.closest('[data-spot]');
+  if (a) return spotlight(a.dataset.spot, a.textContent);
+  const u = e.target.closest('[data-unassign]');
+  if (u) return todoOp({ op: 'unassign', id: Number(u.dataset.unassign), agent: u.dataset.agent });
   const b = e.target.closest('[data-del]'); if (!b) return;
   const t = (state.data.todos || []).find((x) => x.id === Number(b.dataset.del));
   if (!t) return;
@@ -1260,31 +1277,40 @@ document.getElementById('todoClear').addEventListener('click', () => {
   const n = (state.data.todos || []).filter((t) => t.status === 'done').length;
   if (n && confirm(L.todoConfirmClearDone(n))) todoOp({ op: 'deleteDone' });
 });
-// While the question is up, the agent glows in the office if it is on the
-// floor. confirm() holds the page, so the glow gets two frames to be drawn first.
-function confirmUnassign(t) {
-  if (!t || !t.agent) return;
-  const lit = !!office && office.present(t.agent);
-  if (lit) office.highlightKey = t.agent;
-  const ask = () => {
-    const yes = confirm(L.todoConfirmUnassign(t.agentName || t.agent, t.text));
-    if (office) office.highlightKey = null;
-    if (yes) todoOp({ op: 'assign', id: t.id, agent: '' });
-  };
-  if (lit) requestAnimationFrame(() => requestAnimationFrame(ask));
-  else ask();
+// Clicking an agent's name puts it in the office spotlight for a few seconds
+// (the same name again turns it off). One not on the floor gets a note instead.
+const SPOT_MS = 6000;
+let spotTimer = 0;
+function spotlight(key, name) {
+  clearTimeout(spotTimer);
+  const was = office ? office.highlightKey : null;
+  if (office) office.highlightKey = null;
+  if (todoNote.dataset.spot) { todoNote.hidden = true; delete todoNote.dataset.spot; }
+  if (key && key !== was) {
+    if (office && office.present(key)) {
+      office.highlightKey = key;
+    } else {
+      todoNote.className = 'todo-note';
+      todoNote.textContent = L.todoNotInOffice(name || key);
+      todoNote.hidden = false;
+      todoNote.dataset.spot = '1';
+    }
+    spotTimer = setTimeout(() => spotlight(null), SPOT_MS);
+  }
+  renderTodos();
 }
-// The pinned office card: the agent's to-dos (× takes one back) and a menu
-// of the open ones to assign; one assigned elsewhere moves to this agent.
+// The pinned office card: the agent's to-do (× takes it off) and a menu of
+// the open ones; picking one moves the agent there (one to-do at a time).
 function todoPicker(s) {
   const todos = state.data.todos;
   if (!Array.isArray(todos)) return '';
-  const mine = todos.filter((t) => t.agent === s.key);
-  const open = todos.filter((t) => t.agent !== s.key && t.status !== 'done');
+  const mine = todos.filter((t) => (t.agents || []).some((a) => a.key === s.key));
+  const open = todos.filter((t) => !mine.includes(t) && t.status !== 'done');
+  const names = (t) => (t.agents || []).map(todoAgentName).join(', ');
   const rows = mine.map((t) => `<li data-st="${esc(t.status)}"><span class="todo-text" title="${esc(t.text)}">${esc(t.text)}</span><small>${esc(L[TODO_LABEL[t.status]])}</small>`
-    + `<button class="todo-del" data-unassign="${t.id}" title="${esc(L.todoUnassign)}" aria-label="${esc(L.todoUnassign)}">×</button></li>`).join('');
+    + `<button class="todo-del" data-unassign="${t.id}" data-agent="${esc(s.key)}" title="${esc(L.todoUnassign)}" aria-label="${esc(L.todoUnassign)}">×</button></li>`).join('');
   const pick = open.length ? `<select class="btn" data-assign="${esc(s.key)}" aria-label="${esc(L.todoAssign)}"><option value="">${esc(L.todoAssign)}</option>`
-    + `${open.map((t) => `<option value="${t.id}">${esc(t.text)}${t.agentName ? ` · ${esc(t.agentName)}` : ''}</option>`).join('')}</select>` : '';
+    + `${open.map((t) => `<option value="${t.id}">${esc(t.text)}${names(t) ? ` · ${esc(names(t))}` : ''}</option>`).join('')}</select>` : '';
   return `<div class="tp-head">${esc(L.todo)}${s.name ? ` · ${esc(s.name)}` : ''}</div>${rows ? `<ul>${rows}</ul>` : ''}${pick || (rows ? '' : `<p>${esc(L.todoNoOpen)}</p>`)}`;
 }
 tip.addEventListener('change', (e) => {
@@ -1293,7 +1319,7 @@ tip.addEventListener('change', (e) => {
 });
 tip.addEventListener('click', (e) => {
   const b = e.target.closest('[data-unassign]'); if (!b) return;
-  todoOp({ op: 'assign', id: Number(b.dataset.unassign), agent: '' });
+  todoOp({ op: 'unassign', id: Number(b.dataset.unassign), agent: b.dataset.agent });
 });
 
 // ---- detail dialog: one session's whole last prompt and reply, whatever its

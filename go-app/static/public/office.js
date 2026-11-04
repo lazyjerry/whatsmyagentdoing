@@ -556,7 +556,7 @@
       this.visible = true;
       this.hit = [];
       this.hoverKey = null;
-      this.highlightKey = null; // set by the page (a to-do's agent): glows until cleared
+      this.highlightKey = null; // set by the page (a to-do's agent): in the spotlight until cleared
       this.t = performance.now();
       this.pal = palette();
       this.plan = this.buildPlan(0);
@@ -2051,6 +2051,7 @@
       const hover = this.hoverKey === p.key || glow;
       const quiet = (st === 'done' || st === 'idle') && !hover;
       if (glow) this.glow(x, at.y, at.foot ?? at.y + 40, t);
+      if (glow) this.spotAt(x, at.y, at.foot ?? at.y + 40);
       c.save();
       if (quiet) { c.translate(x, at.y); c.scale(0.75, 0.75); c.translate(-x, -at.y); }
 
@@ -2191,19 +2192,14 @@
       c.restore();
     }
 
-    // For the agent the page points at: a pulsing halo and a column of light
-    // from head to feet, a ring on the floor and an arrow bouncing over the tag.
+    // For the agent the page points at: a pulsing halo, a ring on the floor
+    // and an arrow bouncing over the tag (spotlight() adds the light from above).
     glow(x, top, foot, t) {
       const c = this.ctx;
       const gold = (a) => `rgba(255, 200, 60, ${a})`;
       const cy = (top + foot) / 2, ry = Math.max(34, (foot - top) / 2 + 20), rx = Math.max(26, ry * 0.7);
       const a = 0.75 + 0.25 * Math.sin(t * 6);
       c.save();
-      const beam = c.createLinearGradient(0, top - 70, 0, foot);
-      beam.addColorStop(0, gold(0));
-      beam.addColorStop(1, gold(0.35 * a));
-      c.fillStyle = beam;
-      c.fillRect(x - rx * 0.6, top - 70, rx * 1.2, foot - top + 70);
       c.translate(x, cy);
       c.scale(rx / ry, 1);
       const g = c.createRadialGradient(0, 0, 0, 0, 0, ry);
@@ -2225,6 +2221,61 @@
       c.lineWidth = 1.5;
       c.beginPath(); c.moveTo(x - 9, ay - 10); c.lineTo(x + 9, ay - 10); c.lineTo(x, ay + 2); c.closePath();
       c.fill(); c.stroke();
+      c.restore();
+    }
+
+    // Where the spotlit agent stands this frame, in canvas pixels (the 2D
+    // camera, the PiP and the 3D overlay draw bubbles under different transforms).
+    spotAt(x, top, foot) {
+      const m = this.ctx.getTransform();
+      const a = m.transformPoint(new DOMPoint(x, top)), b = m.transformPoint(new DOMPoint(x, foot));
+      this.spot = { x: a.x, top: a.y, foot: b.y, k: Math.hypot(m.a, m.b) };
+    }
+
+    // Drawn over the finished frame (2D and 3D alike, from frame()): the office
+    // dims around the agent the page points at and a cone of light falls on
+    // it from the ceiling, fading in when the agent changes.
+    spotlight() {
+      const s = this.spot;
+      this.spot = null;
+      if (this.spotKey !== this.highlightKey) { this.spotKey = this.highlightKey; this.spotSince = this.t; }
+      if (!s || !this.highlightKey) return;
+      const c = this.ctx;
+      const fade = Math.min(1, (this.t - this.spotSince) / 350);
+      const { x, foot, k } = s;
+      const head = s.top - 56 * k; // over the bouncing arrow
+      const cy = (head + foot) / 2, ry = (foot - head) / 2 + 18 * k, rx = Math.max(ry * 0.8, 56 * k);
+      const W = this.canvas.width, H = this.canvas.height;
+      c.save();
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      // The veil, with a soft oval hole around the agent.
+      c.save();
+      c.translate(x, cy);
+      c.scale(rx / ry, 1);
+      const veil = c.createRadialGradient(0, 0, 0, 0, 0, ry * 1.3);
+      veil.addColorStop(0, 'rgba(6, 8, 20, 0)');
+      veil.addColorStop(0.62, 'rgba(6, 8, 20, 0)');
+      veil.addColorStop(1, `rgba(6, 8, 20, ${0.62 * fade})`);
+      c.fillStyle = veil;
+      c.fillRect(-x * ry / rx, -cy, W * ry / rx, H);
+      c.restore();
+      // The cone, narrow at the ceiling and as wide as the pool on the floor.
+      const light = (a) => `rgba(255, 238, 190, ${a * fade})`;
+      const cone = c.createLinearGradient(0, 0, 0, foot);
+      cone.addColorStop(0, light(0.04));
+      cone.addColorStop(1, light(0.26));
+      c.fillStyle = cone;
+      c.beginPath();
+      c.moveTo(x - 8 * k, 0); c.lineTo(x + 8 * k, 0);
+      c.lineTo(x + rx * 0.85, foot); c.lineTo(x - rx * 0.85, foot);
+      c.closePath(); c.fill();
+      c.translate(x, foot);
+      c.scale(1, 0.32);
+      const pool = c.createRadialGradient(0, 0, 0, 0, 0, rx * 0.95);
+      pool.addColorStop(0, light(0.42));
+      pool.addColorStop(1, light(0));
+      c.fillStyle = pool;
+      c.beginPath(); c.arc(0, 0, rx * 0.95, 0, Math.PI * 2); c.fill();
       c.restore();
     }
 
@@ -2301,6 +2352,7 @@
       if (!this.visible) return;
       this.step(dt);
       if (this.draw() !== false) {
+        this.spotlight();
         if (!this.first && ++this.framesShown === 3) this.markReady(true);
         // Capture immediately: a WebGL drawing buffer may be cleared after
         // this task. The overlay and the 3D canvas must be copied together.
