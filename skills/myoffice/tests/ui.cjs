@@ -322,6 +322,21 @@ async function drawnLogos(target) {
   assert.equal(await page.locator('#todoNote').textContent(),"Nobody isn't in the office right now.");
   await page.evaluate(()=>spotlight(null));
   assert.equal(await page.locator('#todoNote').isVisible(),false);
+  // The agent's own state follows its name; it stays in the office while on an open to-do.
+  const st=await page.evaluate(id=>state.data.todos.find(t=>t.id===id).agents[0].state,first.id);
+  assert.ok(st);assert.equal(await page.locator(`#todoList .todo-chip:has([data-spot="${agent.key}"]) .todo-ast`).getAttribute('data-st'),st);
+  assert.equal(await page.evaluate(k=>office.todoKeys.has(k),agent.key),true);
+  // Clicking the text renames it: Enter saves, Esc leaves it as it was.
+  await page.click(`#todoList [data-edit="${second.id}"]`);
+  await page.fill('#todoList .todo-edit','Write the notes');
+  await todoPost(()=>page.press('#todoList .todo-edit','Enter'));
+  assert.equal(await page.evaluate(id=>state.data.todos.find(t=>t.id===id).text,second.id),'Write the notes');
+  await page.click(`#todoList [data-edit="${second.id}"]`);
+  await page.fill('#todoList .todo-edit','nope');
+  await page.press('#todoList .todo-edit','Escape');
+  assert.equal(await page.locator('#todoList .todo-edit').count(),0);
+  assert.equal(await page.locator(`#todoList [data-edit="${second.id}"]`).textContent(),'Write the notes');
+  check('to-do agent state and rename');
   await todoPost(()=>page.click(`#todoList [data-unassign="${first.id}"][data-agent="${agent.key}"]`));
   assert.deepEqual(await keysOf(first.id),[]);
   await todoPost(()=>page.selectOption('#todoList li:nth-child(2) select','done'));

@@ -14,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +38,7 @@ type TodoAgent struct {
 	Key        string  `json:"key"`        // session key
 	Name       *string `json:"name"`       // its name when assigned, kept after the session leaves the window
 	AssignedAt int64   `json:"assignedAt"` // only its turns ending after this count
+	State      string  `json:"state"`      // per snapshot, not saved: see agentState
 }
 
 var todoStatuses = map[string]bool{"todo": true, "doing": true, "done": true, "paused": true}
@@ -168,8 +168,8 @@ func (st *officeStore) mark(day, name string) {
 	st.used[day][name] = true
 }
 
-// decorate adds names and to-dos to a snapshot, and finishes the to-dos
-// whose agents finished.
+// decorate adds names and to-dos to a snapshot, each agent on a to-do with
+// its state. A to-do's own status only changes by hand.
 func (st *officeStore) decorate(snap *Snapshot) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
@@ -177,8 +177,7 @@ func (st *officeStore) decorate(snap *Snapshot) {
 		return
 	}
 	st.nameSessions(snap.Sessions, snap.Now)
-	st.finish(snap.Sessions, snap.Now)
-	snap.Todos = append([]Todo{}, st.todos...)
+	snap.Todos = withAgentStates(st.todos, snap.Sessions)
 }
 
 // nameSessions gives each session a name the first time it shows up. The
@@ -229,53 +228,36 @@ func (st *officeStore) nameSessions(views []View, now int64) {
 	}
 }
 
-// finish marks a "doing" to-do done once every one of its agents still in
-// the window has finished a turn that ended after it was assigned (agents
-// that left the window have no say; at least one must have finished).
-func (st *officeStore) finish(views []View, now int64) {
+// withAgentStates copies the to-dos with each agent's state filled in (new
+// Agents slices: the stored ones are shared with earlier snapshots).
+func withAgentStates(todos []Todo, views []View) []Todo {
 	byKey := make(map[string]*View, len(views))
 	for i := range views {
 		byKey[views[i].Key] = &views[i]
 	}
-	var ids []string
-	for _, t := range st.todos {
-		if t.Status != "doing" {
-			continue
+	out := append([]Todo{}, todos...)
+	for i := range out {
+		agents := make([]TodoAgent, len(out[i].Agents))
+		for k, a := range out[i].Agents {
+			a.State = agentState(a, byKey[a.Key])
+			agents[k] = a
 		}
-		finished, busy := false, false
-		for _, a := range t.Agents {
-			v := byKey[a.Key]
-			if v == nil {
-				continue
-			}
-			if v.Status == "done" && v.LastEventAt != nil && *v.LastEventAt > a.AssignedAt {
-				finished = true
-			} else {
-				busy = true
-			}
-		}
-		if !finished || busy {
-			continue
-		}
-		ids = append(ids, strconv.FormatInt(t.ID, 10))
+		out[i].Agents = agents
 	}
-	if len(ids) == 0 {
-		return
+	return out
+}
+
+// agentState is how the agent stands on its to-do: "gone" (left the window),
+// "done" (finished a turn that ended after it was assigned), "idle" (finished
+// before that, not started on it yet), else its status right now.
+func agentState(a TodoAgent, v *View) string {
+	switch {
+	case v == nil:
+		return "gone"
+	case v.Status == "done" && (v.LastEventAt == nil || *v.LastEventAt <= a.AssignedAt):
+		return "idle"
 	}
-	sql := fmt.Sprintf("UPDATE todos SET status = 'done', updated_at = %d WHERE id IN (%s);", now, strings.Join(ids, ","))
-	if err := sqliteWrite(st.path, sql, nil); err != nil {
-		fmt.Fprintln(os.Stderr, "to-dos not finished:", err)
-		return
-	}
-	done := map[string]bool{}
-	for _, id := range ids {
-		done[id] = true
-	}
-	for i := range st.todos {
-		if done[strconv.FormatInt(st.todos[i].ID, 10)] {
-			st.todos[i].Status, st.todos[i].UpdatedAt = "done", now
-		}
-	}
+	return v.Status
 }
 
 // cleanTodoText keeps one line: line breaks and tabs become spaces, other
@@ -400,8 +382,8 @@ func (st *officeStore) setStatus(id int64, status string, now int64) error {
 	}
 	t := st.todos[i]
 	sql := ""
-	// Back to "doing" by hand: only turns ending from now on finish it,
-	// not the ones that already did.
+	// Back to "doing" by hand: only turns ending from now on show its
+	// agents as done on it, not the ones that already did.
 	if status == "doing" && t.Status != "doing" && len(t.Agents) > 0 {
 		agents := make([]TodoAgent, len(t.Agents))
 		for k, a := range t.Agents {
@@ -417,7 +399,7 @@ func (st *officeStore) setStatus(id int64, status string, now int64) error {
 
 // assign puts the session v on the to-do, taking it off the one it was on
 // (an agent has one to-do at a time). Assigning mid-turn counts the running
-// turn: it ending can finish the to-do.
+// turn: it ending shows the agent as done on the to-do.
 func (st *officeStore) assign(id int64, v *View, now int64) error {
 	st.mu.Lock()
 	defer st.mu.Unlock()
@@ -462,6 +444,23 @@ func (st *officeStore) unassign(id int64, key string, now int64) error {
 	return st.save(sql+todoRowSQL(t), map[int]Todo{i: t})
 }
 
+// rename changes the to-do's text (cleaned like a new one).
+func (st *officeStore) rename(id int64, text string, now int64) error {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	i := st.find(id)
+	if i < 0 {
+		return errors.New("to-do not found")
+	}
+	if text = cleanTodoText(text); text == "" {
+		return errors.New("the to-do is empty")
+	}
+	t := st.todos[i]
+	t.Text, t.UpdatedAt = text, now
+	sql := fmt.Sprintf("UPDATE todos SET text = %s, updated_at = %d WHERE id = %d;", sqlQuote(text), now, id)
+	return st.save(sql, map[int]Todo{i: t})
+}
+
 // remove deletes a to-do in any status; the page asks first (twice for an
 // unfinished one).
 func (st *officeStore) remove(id int64) error {
@@ -496,7 +495,7 @@ func (st *officeStore) removeDone() error {
 }
 
 type todoRequest struct {
-	Op     string `json:"op"` // add | status | assign | unassign | delete | deleteDone
+	Op     string `json:"op"` // add | rename | status | assign | unassign | delete | deleteDone
 	ID     int64  `json:"id"`
 	Text   string `json:"text"`
 	Status string `json:"status"`
@@ -521,6 +520,8 @@ func (s *Server) serveTodo(w http.ResponseWriter, r *http.Request) {
 	switch req.Op {
 	case "add":
 		err = s.store.add(req.Text, req.Status, now)
+	case "rename":
+		err = s.store.rename(req.ID, req.Text, now)
 	case "status":
 		err = s.store.setStatus(req.ID, req.Status, now)
 	case "assign":

@@ -103,20 +103,34 @@ func TestTodoLifecycle(t *testing.T) {
 	if got.Status != "doing" || len(got.Agents) != 1 || got.Agents[0].Key != "claude:a" || got.Agents[0].Name == nil || *got.Agents[0].Name == "" {
 		t.Fatalf("after assign: %+v", got)
 	}
-	// Assigned mid-turn: the running turn counts, so it finishing finishes the to-do.
+	// Assigned mid-turn: the running turn counts, so it finishing shows the agent done.
 	if got.Agents[0].AssignedAt != working.TurnStartedAt {
 		t.Fatalf("assignedAt %d, want the turn start %d", got.Agents[0].AssignedAt, working.TurnStartedAt)
+	}
+	if st := got.Agents[0].State; st != "thinking" {
+		t.Fatalf("agent working, state %q", st)
 	}
 	finished := working
 	finished.Status, finished.LastEventAt = "done", now
 	src.set(finished)
-	if got := s.snap().Todos[0]; got.Status != "done" {
-		t.Fatalf("agent finished, to-do is %q", got.Status)
+	// The agent finishing doesn't touch the to-do's status, only its own state.
+	if got := s.snap().Todos[0]; got.Status != "doing" || got.Agents[0].State != "done" {
+		t.Fatalf("agent finished: to-do %q, agent %q", got.Status, got.Agents[0].State)
 	}
-	// By hand back to doing: the turn that already ended doesn't finish it again.
+	// By hand to done and back to doing: the turn that already ended no longer counts.
+	postTodo(s, body("status", `,"status":"done"`), true)
 	postTodo(s, body("status", `,"status":"doing"`), true)
-	if got := s.snap().Todos[0]; got.Status != "doing" {
-		t.Fatalf("set back to doing, got %q", got.Status)
+	if got := s.snap().Todos[0]; got.Status != "doing" || got.Agents[0].State != "idle" {
+		t.Fatalf("set back to doing: to-do %q, agent %q", got.Status, got.Agents[0].State)
+	}
+	if code, out := postTodo(s, body("rename", `,"text":"  Ship\tit  "`), true); code != 200 {
+		t.Fatalf("rename: %d %v", code, out)
+	}
+	if got := s.snap().Todos[0]; got.Text != "Ship it" {
+		t.Fatalf("after rename: %q", got.Text)
+	}
+	if code, _ := postTodo(s, body("rename", `,"text":"   "`), true); code != 400 {
+		t.Fatal("renaming to nothing was accepted")
 	}
 	if code, _ := postTodo(s, body("status", `,"status":"later"`), true); code != 400 {
 		t.Fatal("an unknown status was accepted")
@@ -140,7 +154,7 @@ func TestTodoLifecycle(t *testing.T) {
 
 	// Kept in the file: a new store reads the same row.
 	reopened := openOfficeStore(db)
-	if len(reopened.todos) != 1 || reopened.todos[0].Status != "done" || reopened.todos[0].Text != "Ship the list" {
+	if len(reopened.todos) != 1 || reopened.todos[0].Status != "done" || reopened.todos[0].Text != "Ship it" {
 		t.Fatalf("reopened: %+v", reopened.todos)
 	}
 	if code, out := postTodo(s, body("delete", ""), true); code != 200 {
@@ -225,18 +239,14 @@ func TestTodoManyAgentsOneTodoEach(t *testing.T) {
 		t.Fatalf("after moving b, x has nobody and is not doing: %+v", s.snap().Todos)
 	}
 
-	// Done only once every agent on it has finished.
+	// Agents finishing never finish the to-do: each shows its own state, one
+	// that left the window shows "gone".
 	aDone := a
 	aDone.Status, aDone.LastEventAt = "done", now
-	src.set(aDone, b)
-	if got := s.snap().Todos[1].Status; got != "doing" {
-		t.Fatalf("one of two agents finished, to-do is %q", got)
-	}
-	bDone := b
-	bDone.Status, bDone.LastEventAt = "done", now
-	src.set(aDone, bDone)
-	if got := s.snap().Todos[1].Status; got != "done" {
-		t.Fatalf("both agents finished, to-do is %q", got)
+	src.set(aDone)
+	got := s.snap().Todos[1]
+	if got.Status != "doing" || got.Agents[0].State != "done" || got.Agents[1].State != "gone" {
+		t.Fatalf("a finished, b left: %+v", got)
 	}
 
 	reopened := openOfficeStore(db)

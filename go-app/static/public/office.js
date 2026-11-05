@@ -557,6 +557,7 @@
       this.hit = [];
       this.hoverKey = null;
       this.highlightKey = null; // set by the page (a to-do's agent): in the spotlight until cleared
+      this.todoKeys = new Set(); // set by the page: agents on an open to-do, never sent home
       this.t = performance.now();
       this.pal = palette();
       this.plan = this.buildPlan(0);
@@ -850,7 +851,9 @@
       const off = sessions
         .filter((s) => !WORKING.has(s.status))
         .sort((a, b) => (b.lastEventAt || 0) - (a.lastEventAt || 0));
-      const wanderers = off.slice(0, MAX_WANDERERS);
+      // Agents on an open to-do stay on top of the limit.
+      const kept = (s) => this.todoKeys.has(s.key);
+      const wanderers = [...off.filter(kept), ...off.filter((s) => !kept(s)).slice(0, MAX_WANDERERS)];
       this.offDuty = off.length - wanderers.length;
 
       // Waiting on you: in line for the hotline desk, first come first served.
@@ -2192,29 +2195,25 @@
       c.restore();
     }
 
-    // For the agent the page points at: a pulsing halo, a ring on the floor
-    // and an arrow bouncing over the tag (spotlight() adds the light from above).
+    // For the agent the page points at: a soft pulsing halo and an arrow
+    // bouncing over the tag (spotlight() adds the light from above and the pool on the floor).
     glow(x, top, foot, t) {
       const c = this.ctx;
       const gold = (a) => `rgba(255, 200, 60, ${a})`;
       const cy = (top + foot) / 2, ry = Math.max(34, (foot - top) / 2 + 20), rx = Math.max(26, ry * 0.7);
-      const a = 0.75 + 0.25 * Math.sin(t * 6);
+      const a = 0.8 + 0.2 * Math.sin(t * 3);
       c.save();
       c.translate(x, cy);
       c.scale(rx / ry, 1);
       const g = c.createRadialGradient(0, 0, 0, 0, 0, ry);
-      g.addColorStop(0, gold(0.7 * a));
-      g.addColorStop(0.55, gold(0.4 * a));
+      g.addColorStop(0, gold(0.32 * a));
+      g.addColorStop(0.5, gold(0.16 * a));
+      g.addColorStop(0.8, gold(0.05 * a));
       g.addColorStop(1, gold(0));
       c.fillStyle = g;
       c.beginPath(); c.arc(0, 0, ry, 0, Math.PI * 2); c.fill();
       c.restore();
       c.save();
-      c.strokeStyle = gold(a);
-      c.lineWidth = 3;
-      c.shadowColor = gold(1);
-      c.shadowBlur = 16;
-      c.beginPath(); c.ellipse(x, foot, rx, rx * 0.5, 0, 0, Math.PI * 2); c.stroke();
       const ay = top - 46 - Math.abs(Math.sin(t * 5)) * 8;
       c.fillStyle = gold(1);
       c.strokeStyle = 'rgba(80, 50, 0, 0.8)';
@@ -2254,28 +2253,44 @@
       c.scale(rx / ry, 1);
       const veil = c.createRadialGradient(0, 0, 0, 0, 0, ry * 1.3);
       veil.addColorStop(0, 'rgba(6, 8, 20, 0)');
-      veil.addColorStop(0.62, 'rgba(6, 8, 20, 0)');
-      veil.addColorStop(1, `rgba(6, 8, 20, ${0.62 * fade})`);
+      veil.addColorStop(0.45, 'rgba(6, 8, 20, 0)');
+      veil.addColorStop(1, `rgba(6, 8, 20, ${0.55 * fade})`);
       c.fillStyle = veil;
       c.fillRect(-x * ry / rx, -cy, W * ry / rx, H);
       c.restore();
-      // The cone, narrow at the ceiling and as wide as the pool on the floor.
-      const light = (a) => `rgba(255, 238, 190, ${a * fade})`;
-      const cone = c.createLinearGradient(0, 0, 0, foot);
-      cone.addColorStop(0, light(0.04));
-      cone.addColorStop(1, light(0.26));
-      c.fillStyle = cone;
-      c.beginPath();
-      c.moveTo(x - 8 * k, 0); c.lineTo(x + 8 * k, 0);
-      c.lineTo(x + rx * 0.85, foot); c.lineTo(x - rx * 0.85, foot);
-      c.closePath(); c.fill();
+      // The beam: stacked cones of growing width and little light each, so the
+      // edges fade out instead of ending in a line. Each ends in the floor
+      // ellipse, not a straight cut, and is faintest down there, where the
+      // pool takes over. Screen blending brightens like light does.
+      c.globalCompositeOperation = 'screen';
+      const light = (a) => `rgba(255, 236, 196, ${a * fade})`;
+      const beam = c.createLinearGradient(0, 0, 0, foot);
+      beam.addColorStop(0, light(0.02));
+      beam.addColorStop(0.45, light(0.05));
+      beam.addColorStop(0.85, light(0.045));
+      beam.addColorStop(1, light(0.015));
+      c.fillStyle = beam;
+      const LAYERS = 6, flat = 0.3;
+      for (let i = 0; i < LAYERS; i++) {
+        const w = rx * (0.45 + 0.13 * i), top = (5 + 3 * i) * k;
+        c.beginPath();
+        c.moveTo(x - top, 0); c.lineTo(x + top, 0);
+        c.lineTo(x + w, foot);
+        c.ellipse(x, foot, w, w * flat, 0, 0, Math.PI);
+        c.closePath(); c.fill();
+      }
+      // The pool on the floor: a hot centre falling off smoothly to nothing.
       c.translate(x, foot);
-      c.scale(1, 0.32);
-      const pool = c.createRadialGradient(0, 0, 0, 0, 0, rx * 0.95);
-      pool.addColorStop(0, light(0.42));
+      c.scale(1, flat);
+      const R = rx * 1.25;
+      const pool = c.createRadialGradient(0, 0, 0, 0, 0, R);
+      pool.addColorStop(0, light(0.34));
+      pool.addColorStop(0.25, light(0.26));
+      pool.addColorStop(0.5, light(0.13));
+      pool.addColorStop(0.75, light(0.04));
       pool.addColorStop(1, light(0));
       c.fillStyle = pool;
-      c.beginPath(); c.arc(0, 0, rx * 0.95, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.arc(0, 0, R, 0, Math.PI * 2); c.fill();
       c.restore();
     }
 
