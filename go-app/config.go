@@ -109,6 +109,16 @@ const (
 	LaunchListTimeout = 15 * time.Second
 )
 
+// 在 Orca 接續（orca.go、resume.go 用）：資料夾在 Orca 工作區裡的 session，用 orca CLI 在該工作區開終端機分頁接續對話。
+const (
+	// 多久重抓一次 Orca 的工作區清單（`orca worktree list`），用來判斷哪些 session 顯示按鈕。
+	OrcaRefreshEvery = 30 * time.Second
+	// 列工作區的子行程最多跑這麼久。
+	OrcaListTimeout = 5 * time.Second
+	// 開終端機分頁的子行程最多跑這麼久。
+	OrcaOpenTimeout = 20 * time.Second
+)
+
 // 老闆的統計卡（stats.go 用）：點老闆時顯示 5 小時內、24 小時內與這週（週一 00:00 起）的
 // 對話輪數、完成率與工具呼叫次數。第一次要把這週動過的 log 全部讀一遍，之後只讀新增的部分。
 const StatsCacheFor = 30 * time.Second

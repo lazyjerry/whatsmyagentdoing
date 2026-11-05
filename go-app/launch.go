@@ -114,17 +114,25 @@ func findLaunchAgent(id string) (launchAgent, string, bool) {
 			continue
 		}
 		for _, b := range a.bins {
-			if p, err := exec.LookPath(b); err == nil {
+			if p, ok := findBin(b); ok {
 				return a, p, true
-			}
-			for _, d := range launchBinDirs {
-				if p := filepath.Join(d, b); fileExists(p) {
-					return a, p, true
-				}
 			}
 		}
 	}
 	return launchAgent{}, "", false
+}
+
+// findBin looks for a CLI on PATH, then in launchBinDirs.
+func findBin(name string) (string, bool) {
+	if p, err := exec.LookPath(name); err == nil {
+		return p, true
+	}
+	for _, d := range launchBinDirs {
+		if p := filepath.Join(d, name); fileExists(p) {
+			return p, true
+		}
+	}
+	return "", false
 }
 
 func detectTerminals() []launchTerminal {

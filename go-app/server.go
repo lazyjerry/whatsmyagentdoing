@@ -93,6 +93,7 @@ type View struct {
 	CompactAt       *int64   `json:"compactAt"`       // where the CLI compacts on its own
 	Alerts          []string `json:"alerts"`          // "compact", "longTurn": shown apart from the status
 	Name            *string  `json:"name"`            // a person's name as a loose alias for the key (todo.go)
+	Orca            bool     `json:"orca,omitempty"`  // the folder is in an Orca workspace (orca.go)
 }
 
 type Snapshot struct {
@@ -305,6 +306,7 @@ type Server struct {
 	restart  func()
 	stats    *statsScanner
 	store    *officeStore
+	orca     orcaWorkspaces
 
 	mu      sync.Mutex
 	clients map[chan string]struct{}
@@ -330,11 +332,15 @@ func NewServer(src Source, opts Options, updater *Updater, onShutdown, onRestart
 	return s
 }
 
-// snap is the snapshot plus names and to-dos from office.db.
+// snap is the snapshot plus names and to-dos from office.db, and which
+// sessions are in an Orca workspace.
 func (s *Server) snap() Snapshot {
 	snap := snapshot(s.src, s.opts)
 	if s.store != nil {
 		s.store.decorate(&snap)
+	}
+	if !s.opts.Demo {
+		s.orca.mark(snap.Sessions)
 	}
 	return snap
 }
@@ -556,6 +562,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.serveTodo(w, r)
+
+	case p == "/api/resume" && r.Method == "POST":
+		// Same guard as launch: web pages can't send this header cross-site.
+		if header != "resume" {
+			w.WriteHeader(403)
+			return
+		}
+		s.serveResume(w, r)
 
 	default:
 		w.WriteHeader(404)

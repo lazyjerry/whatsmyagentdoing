@@ -239,11 +239,24 @@ skill 的 `skills/myoffice/bin/whatsmyagentdoing` 與直接建出的 `go-app/wha
 | `ClaudeCompactReserve` | 33,000 | Claude Code 的門檻 = window − 這個保留量（20k 摘要輸出＋13k 緩衝，本機實測吻合） |
 | `CodexCompactRatio` | 0.9 | Codex 的 `~/.codex/config.toml` 沒設 `model_auto_compact_token_limit` 時，門檻 = log 裡的 `model_context_window` × 這個比例 |
 
-**詳細資訊視窗。** 點辦公室裡的人物會固定它的卡片；固定的卡片與每張列表卡片上都有「詳細」按鈕（不論狀態），按下開一個視窗，顯示該 session 的狀態、最後的提示詞與回覆全文（保留換行；工作中顯示本輪目前寫到的回覆）、目錄與 id，底部是跟列表卡片相同的動作按鈕：複製接續指令、複製標題、在 VS Code 開啟。全文由 `/api/session?key=` 另外取，SSE 快照仍只送 220 字預覽。
+**詳細資訊視窗。** 點辦公室裡的人物會固定它的卡片；固定的卡片與每張列表卡片上都有「詳細」按鈕（不論狀態），按下開一個視窗，顯示該 session 的狀態、最後的提示詞與回覆全文（保留換行；工作中顯示本輪目前寫到的回覆）、目錄與 id，底部是跟列表卡片相同的動作按鈕：複製接續指令、複製標題、**開啟 ▾**。全文由 `/api/session?key=` 另外取，SSE 快照仍只送 220 字預覽。
 
 | 常數 | 預設 | 意思 |
 |---|---|---|
 | `FullTextMax` | 20,000 | 視窗裡的提示詞與回覆各最多這麼多字 |
+
+**開啟 ▾。** 卡片底部一顆按鈕收齊所有「用別的程式開這個 session」的選項，選單浮在卡片外，列表重繪不會把它關掉：
+- **在 VS Code 開啟**：從 VS Code 開的 Claude Code／Codex session，不論狀態。
+- **在 Orca 接續**：資料夾在 Orca 工作區裡的 session（Orca 的對話、Orca 裡的終端機，或在 Orca 管理的 repo 裡用別的工具開的）。dashboard 呼叫 `orca terminal create`，在同一個工作區開新終端機分頁、`cd` 到原目錄跑接續指令並切過去。Orca 沒有能依 session id 叫出原本對話的連結或指令，所以開的是新分頁、不是原本的對話視窗。工作區清單來自 `orca worktree list`（只算本機、未封存的）；Orca 沒開時清單是空的、這項不出現，dashboard 不會把 Orca 叫起來。
+- **在預設終端機／Terminal／iTerm2／Ghostty 接續**：跟新對話同一份終端機清單，只列出這台電腦裝了的；不需要在 Orca 工作區裡。產生一支 `.command` 腳本，在新視窗 `cd` 到原目錄跑接續指令。
+
+接續類的選項只在 session 停下來之後出現（工作中與等待回應時原本的行程還開著，兩個行程寫同一個 session 會亂），伺服器也會再擋一次；原目錄已不存在時拒絕。只在 macOS，`--demo` 只驗證、不會真的開。
+
+| 常數 | 預設 | 意思 |
+|---|---|---|
+| `OrcaRefreshEvery` | 30 秒 | 多久重抓一次 Orca 的工作區清單 |
+| `OrcaListTimeout` | 5 秒 | 列工作區的子行程最多跑這麼久 |
+| `OrcaOpenTimeout` | 20 秒 | 開終端機分頁的子行程最多跑這麼久 |
 
 **電視。** 見上方「選項」的 `--tv-dir`。
 
@@ -295,7 +308,7 @@ skill 的 `skills/myoffice/bin/whatsmyagentdoing` 與直接建出的 `go-app/wha
 
 支援 Claude Code（CLI、桌面版、IDE）、Codex（CLI、桌面版、IDE）、Gemini CLI、Google Antigravity（`agy` CLI 與 IDE）與 OpenCode（TUI 與 `opencode run`）——只要會把 session 紀錄寫到磁碟的工具都行。Antigravity 的對話本體是未公開的二進位格式，這裡讀的是它旁邊的 SQLite 摘要庫（標題、第一句提示、工作區、狀態、時間），所以看不到回覆內容；摘要庫對執行中的 CLI 對話一律記成閒置，`agy -p` 是否還在跑改由它自己的 log 與行程判斷（互動式 `agy` 判斷不了，執行中仍顯示已完成）。 OpenCode 把 session、訊息與工具呼叫都寫進一個 SQLite 資料庫，狀態與回覆都讀得到，但權限詢問不會落地，等你核准的工具會一直顯示「執行中」。
 
-唯一會啟動程式的是 **新對話**（`POST /api/launch`）：跟關閉、更新一樣要帶自訂 header，跨站網頁送不出來；agent 名稱走白名單、model 只收偵測清單上的、資料夾先驗證，參數不經 shell 解析，提示詞只放進腳本裡加引號的變數。
+會啟動程式的只有 **新對話**（`POST /api/launch`）與 **開啟 ▾** 的接續（`POST /api/resume`）：跟關閉、更新一樣要帶自訂 header，跨站網頁送不出來；agent 名稱走白名單、model 只收偵測清單上的、資料夾先驗證，參數不經 shell 解析，提示詞只放進腳本裡加引號的變數。接續只收 session 的 key，指令由伺服器依該 session 組出、每個參數加引號。
 
 待辦與 agent 姓名寫進 `~/.whatsmyagentdoing/office.db`，經 `POST /api/todos` 修改，同樣要帶自訂 header；agent 的 log 一律只讀。
 

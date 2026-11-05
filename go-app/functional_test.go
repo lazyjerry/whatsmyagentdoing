@@ -27,6 +27,8 @@ var builtBinary string // set by TestMain unless -short
 
 func TestMain(m *testing.M) {
 	flag.Parse()
+	// In-process servers leave this machine's Orca alone; orca_test.go turns it back on with a fake CLI.
+	orcaSupported = false
 	if !testing.Short() {
 		dir, err := os.MkdirTemp("", "wmad-test-bin")
 		if err != nil {

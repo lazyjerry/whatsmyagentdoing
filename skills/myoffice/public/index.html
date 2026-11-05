@@ -293,6 +293,12 @@
   .more { margin-left: auto; border: 0; background: none; color: var(--tool); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; padding: 0; flex: none; }
   .more:hover { color: var(--ink); }
   .foot .more ~ .copy, .foot .more ~ .open { margin-left: 0; }
+  /* The "Open ▾" menu: floats outside the card, which re-renders with every snapshot. */
+  .opener-menu { position: fixed; z-index: 30; display: flex; flex-direction: column; min-width: 170px; max-width: min(320px, calc(100vw - 16px)); padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow); font-size: 12.5px; }
+  .opener-menu .item { display: block; padding: 6px 10px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: inherit; text-align: left; text-decoration: none; cursor: pointer; white-space: nowrap; }
+  .opener-menu .item:hover:not(:disabled) { background: var(--bg); }
+  .opener-menu .item:disabled { color: var(--faint); cursor: default; }
+  .opener-err { padding: 4px 10px 6px; color: var(--error); white-space: normal; }
   .detail { width: min(760px, calc(100vw - 24px)); max-width: none; max-height: calc(100dvh - 24px); padding: 0; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); color: var(--ink); box-shadow: 0 20px 60px rgba(0,0,0,.28); }
   .detail[open] { display: flex; flex-direction: column; }
   .detail::backdrop { background: rgba(0,0,0,.5); }
@@ -693,6 +699,26 @@ function vscodeLink(s, cls = 'open') {
   return `<a class="${cls}" href="${href}">${L.openVscode}</a>`;
 }
 
+// The "Open ▾" menu on a card: VS Code for sessions started there, and once
+// a session has stopped, resuming it in Orca (its folder is in an Orca
+// workspace; the server marks those) or in a new window of any installed
+// terminal (the ones New chat offers). Not while it is working or waiting,
+// since its own process still has it open.
+function openerItems(s) {
+  const items = [];
+  const vs = vscodeLink(s, 'item');
+  if (vs) items.push(vs);
+  if (!launchInfo || s.subagent || !s.cwd || ACTIVE.has(s.status) || s.status === 'waiting') return items;
+  const resume = (app, name) => `<button type="button" class="item" data-resume="${esc(app)}">${esc(L.resumeIn(name))}</button>`;
+  if (s.orca) items.push(resume('orca', 'Orca'));
+  for (const t of launchInfo.terminals) items.push(resume(t.id, t.id === 'default' ? L.termDefaultApp : t.name));
+  return items;
+}
+function openerButton(s, cls = 'copy') {
+  if (!openerItems(s).length) return '';
+  return `<button type="button" class="${cls}" data-opener="${esc(s.key)}" aria-haspopup="menu">${L.openWith} ▾</button>`;
+}
+
 function agentLogo(agent) {
   const badge = OFFICE_AGENT_BADGES[agent];
   return badge ? `<img class="agent-logo" src="${badge.logo}" alt="" aria-hidden="true">` : '';
@@ -747,7 +773,7 @@ function card(s, now, detail = false) {
     <div class="status"><span class="ind"><i></i><i></i><i></i></span><span class="lbl">${esc(L[s.status] || s.status)}</span>${act}</div>
     ${err}${q}${r}
     ${detail ? meta(s, now) : ''}
-    <div class="foot"><span class="model">${esc((s.model || '') + sub)}</span><button class="more" data-detail="${esc(s.key)}">${L.detail}</button><button class="copy" data-copy="${esc(resumeCmd(s))}">${L.copy}</button>${s.title ? `<button class="copy" data-copy="${esc(s.title)}">${L.copyTitle}</button>` : ''}${vscodeLink(s)}</div>
+    <div class="foot"><span class="model">${esc((s.model || '') + sub)}</span><button class="more" data-detail="${esc(s.key)}">${L.detail}</button><button class="copy" data-copy="${esc(resumeCmd(s))}">${L.copy}</button>${s.title ? `<button class="copy" data-copy="${esc(s.title)}">${L.copyTitle}</button>` : ''}${openerButton(s)}</div>
   </div>`;
 }
 
@@ -966,6 +992,57 @@ document.addEventListener('click', (e) => {
   navigator.clipboard?.writeText(b.dataset.copy).then(() => {
     b.textContent = L.copied; setTimeout(() => (b.textContent = label), 1400);
   });
+});
+// "Open ▾": the menu goes in the dialog when the button is in one (a modal
+// dialog sits above the page), below the button or above it if there's no room.
+let openerMenu = null;
+function closeOpener() { openerMenu?.remove(); openerMenu = null; }
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-opener]');
+  if (!b) {
+    if (!openerMenu) return;
+    if (!openerMenu.contains(e.target)) closeOpener();
+    else if (e.target.closest('a.item')) setTimeout(closeOpener);
+    return;
+  }
+  const again = openerMenu?.dataset.key === b.dataset.opener && openerMenu.isConnected;
+  closeOpener();
+  const s = state.data.sessions.find((x) => x.key === b.dataset.opener);
+  if (again || !s) return;
+  const m = document.createElement('div');
+  m.className = 'opener-menu';
+  m.setAttribute('role', 'menu');
+  m.dataset.key = s.key;
+  m.innerHTML = openerItems(s).join('') + '<div class="opener-err" hidden></div>';
+  (b.closest('dialog') || document.body).appendChild(m);
+  const r = b.getBoundingClientRect();
+  const top = r.bottom + 4 + m.offsetHeight > innerHeight - 8 ? r.top - 4 - m.offsetHeight : r.bottom + 4;
+  m.style.top = Math.max(8, top) + 'px';
+  m.style.left = Math.max(8, Math.min(r.right - m.offsetWidth, innerWidth - m.offsetWidth - 8)) + 'px';
+  openerMenu = m;
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeOpener(); });
+addEventListener('resize', closeOpener);
+document.addEventListener('scroll', (e) => { if (openerMenu && !openerMenu.contains(e.target)) closeOpener(); }, true);
+// Resume: the server checks the session again, then has Orca or the terminal open it.
+document.addEventListener('click', (e) => {
+  const it = e.target.closest('.opener-menu [data-resume]');
+  if (!it || it.disabled) return;
+  const m = openerMenu, items = m.querySelectorAll('[data-resume]'), err = m.querySelector('.opener-err');
+  items.forEach((x) => (x.disabled = true));
+  err.hidden = true;
+  fetch('/api/resume', { method: 'POST', headers: { 'content-type': 'application/json', 'x-whatsmyagentdoing': 'resume' }, body: JSON.stringify({ key: m.dataset.key, app: it.dataset.resume }) })
+    .then((r) => r.json()).catch(() => ({ ok: false }))
+    .then((r) => {
+      if (r.ok) {
+        it.textContent = L.resumeOpened;
+        setTimeout(() => { if (openerMenu === m) closeOpener(); }, 900);
+        return;
+      }
+      items.forEach((x) => (x.disabled = false));
+      err.textContent = L.resumeFailed + (r.error ? `: ${r.error}` : '');
+      err.hidden = false;
+    });
 });
 
 // ---- office view
@@ -1434,7 +1511,7 @@ document.addEventListener('click', (e) => {
 function detailActions(s) {
   return `<button type="button" class="btn" data-copy="${esc(resumeCmd(s))}">${L.copy}</button>`
     + (s.title ? `<button type="button" class="btn" data-copy="${esc(s.title)}">${L.copyTitle}</button>` : '')
-    + vscodeLink(s, 'btn');
+    + openerButton(s, 'btn');
 }
 
 // ---- new chat: pick an agent, a model, a folder and a prompt; the server
